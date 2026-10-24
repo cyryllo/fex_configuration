@@ -1,0 +1,157 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Nakladka Device Tree: LeMaker 5" RGB 800x480 + dotyk FT5x06
+ * Plyta: LeMaker Banana Pro (Allwinner A20), jadro mainline (Armbian current/edge)
+ *
+ * Zrodlo parametrow: fex/banana_pro_5lcd.fex z LeMaker/fex_configuration
+ *
+ * Instalacja na Armbian:
+ *   sudo armbian-add-overlay bananapro-lemaker-lcd5.dts
+ *   reboot
+ *
+ * Nie wlaczaj jednoczesnie z nakladka 3.5" ani 7" (wszystkie uzywaja TCON0,
+ * tych samych pinow i tego samego adresu dotyku).
+ * Status: szkic do testow, nie sprawdzony na sprzecie.
+ */
+
+/dts-v1/;
+/plugin/;
+
+/*
+ * Sciaga (dtc bez preprocesora, wiec liczby zamiast makr):
+ *   bank H = 7,  GPIO_ACTIVE_HIGH = 0,  IRQ_TYPE_EDGE_FALLING = 2
+ *   PWM: <&pwm kanal okres_ns polaryzacja>, 0 = normalna
+ */
+
+&{/} {
+	/* CO: zasilanie matrycy na PH12 (lcd_power w fex). */
+	lcd5_power: lcd5-power {
+		compatible = "regulator-fixed";
+		regulator-name = "lcd5-power";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&pio 7 12 0>;		/* PH12 */
+		enable-active-high;
+	};
+
+	/*
+	 * CO: podswietlenie PWM0 (PB2) + wlacznik PH8.
+	 * Jesli dziala odwrotnie (0 = najjasniej), zmien ostatnia liczbe w pwms na 1.
+	 */
+	lcd5_backlight: lcd5-backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm 0 50000 0>;
+		brightness-levels = <0 255>;
+		num-interpolated-steps = <255>;
+		default-brightness-level = <200>;
+		enable-gpios = <&pio 7 8 0>;	/* PH8 */
+	};
+
+	/*
+	 * CO: panel RGB opisany ogolnym wiazaniem "panel-dpi".
+	 * DLACZEGO: w przeciwienstwie do 3.5" tego ekranu nie ma w sterowniku
+	 * panel-simple, wiec timingi podajemy recznie w panel-timing.
+	 * Pierwszy compatible jest tylko opisowy, sterownik dopasowuje "panel-dpi".
+	 */
+	lcd5_panel: lcd5-panel {
+		compatible = "lemaker,lcd-5inch-rgb", "panel-dpi";
+		width-mm = <108>;
+		height-mm = <65>;
+		power-supply = <&lcd5_power>;
+		backlight = <&lcd5_backlight>;
+
+		/*
+		 * CO: timingi przeliczone z fex.
+		 * DLACZEGO takie liczby: w fex "hbp"/"vbp" zawieraja juz impuls sync,
+		 * a "vt" jest podwojone (stara konwencja Allwinnera).
+		 *   hback  = hbp - hspw     = 88 - 48        = 40
+		 *   hfront = ht - x - hbp   = 928 - 800 - 88 = 40
+		 *   vt     = 1050 / 2       = 525
+		 *   vback  = vbp - vspw     = 32 - 3         = 29
+		 *   vfront = vt - y - vbp   = 525 - 480 - 32 = 13
+		 * Wynik ~61.6 Hz, zgodny z konfiguracja U-Boot dla tego ekranu z linux-sunxi.
+		 *
+		 * DLACZEGO brak hsync-active/vsync-active/de-active: bez nich sterownik
+		 * A20 zostawia polaryzacje domyslne, czyli tak samo jak w fex.
+		 * Jesli obraz ma kolorowy szum lub "migoczace" krawedzie, dopisz
+		 * pixelclk-active = <0>; albo <1>; (zmienia zbocze zegara pikseli).
+		 */
+		panel-timing {
+			clock-frequency = <30000000>;
+			hactive = <800>;
+			vactive = <480>;
+			hfront-porch = <40>;
+			hback-porch = <40>;
+			hsync-len = <48>;
+			vfront-porch = <13>;
+			vback-porch = <29>;
+			vsync-len = <3>;
+		};
+
+		port {
+			lcd5_panel_in: endpoint {
+				remote-endpoint = <&tcon0_out_lcd5>;
+			};
+		};
+	};
+};
+
+/*
+ * CO: piny PD0-PD27 jako rownolegle wyjscie RGB (funkcja "lcd0").
+ * DLACZEGO wlasna grupa: plik bazowy A20 nie ma gotowej grupy RGB na porcie D.
+ * Tutaj, inaczej niz w 3.5", fex uzywal tez PD25 (DE) jako sygnalu LCD.
+ */
+&pio {
+	lcd5_rgb888_pins: lcd5-rgb888-pins {
+		pins = "PD0", "PD1", "PD2", "PD3", "PD4", "PD5", "PD6", "PD7",
+		       "PD8", "PD9", "PD10", "PD11", "PD12", "PD13", "PD14", "PD15",
+		       "PD16", "PD17", "PD18", "PD19", "PD20", "PD21", "PD22", "PD23",
+		       "PD24", "PD25", "PD26", "PD27";
+		function = "lcd0";
+	};
+};
+
+&tcon0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&lcd5_rgb888_pins>;
+};
+
+/* CO: polaczenie TCON0 -> panel na porcie 1, endpoint 0 (wymog sterownika). */
+&tcon0_out {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	tcon0_out_lcd5: endpoint@0 {
+		reg = <0>;
+		remote-endpoint = <&lcd5_panel_in>;
+	};
+};
+
+&pwm {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm0_pin>;
+	status = "okay";
+};
+
+/*
+ * CO: dotyk FocalTech na I2C3 (PI0/PI1), adres 0x38, przerwanie PH9,
+ * wybudzanie PH7, zakres 800x480. Taki sam uklad jak w 3.5" i 7".
+ * UWAGA: wymaga modulu edt-ft5x06, ktorego Armbian domyslnie nie buduje.
+ */
+&i2c3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c3_pins>;
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	touchscreen@38 {
+		compatible = "edt,edt-ft5406";
+		reg = <0x38>;
+		interrupt-parent = <&pio>;
+		interrupts = <7 9 2>;		/* PH9, zbocze opadajace */
+		wake-gpios = <&pio 7 7 0>;	/* PH7, w fex stan wysoki = praca */
+		touchscreen-size-x = <800>;
+		touchscreen-size-y = <480>;
+	};
+};

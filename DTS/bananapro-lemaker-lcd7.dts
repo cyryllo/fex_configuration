@@ -1,0 +1,160 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Nakladka Device Tree: LeMaker 7" LVDS 1024x600 + dotyk FT5x06
+ * Plyta: LeMaker Banana Pro (Allwinner A20), jadro mainline (Armbian current/edge)
+ *
+ * Zrodlo parametrow: fex/banana_pro_7lcd.fex z LeMaker/fex_configuration
+ *
+ * Instalacja na Armbian:
+ *   sudo armbian-add-overlay bananapro-lemaker-lcd7.dts
+ *   reboot
+ *
+ * Status: szkic do testow, nie sprawdzony na sprzecie.
+ */
+
+/dts-v1/;
+/plugin/;
+
+/*
+ * CO: liczby zamiast nazw z #include (GPIO_ACTIVE_HIGH itp.).
+ * DLACZEGO: armbian-add-overlay kompiluje plik samym dtc, bez preprocesora,
+ * wiec #include i makra by sie nie rozwinely.
+ *
+ * Sciaga:  bank H = 7,  GPIO_ACTIVE_HIGH = 0,  IRQ_TYPE_EDGE_FALLING = 2
+ *          PWM: <&pwm kanal okres_ns polaryzacja>, 0 = normalna
+ */
+
+&{/} {
+	/*
+	 * CO: zasilanie matrycy, w fex: lcd_power = PH12.
+	 * DLACZEGO: sterownik panelu wlacza zasilanie przez regulator,
+	 * nie przez goly pin GPIO, wiec owijamy PH12 w "regulator-fixed".
+	 */
+	lcd7_power: lcd7-power {
+		compatible = "regulator-fixed";
+		regulator-name = "lcd7-power";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&pio 7 12 0>;		/* PH12 */
+		enable-active-high;
+	};
+
+	/*
+	 * CO: podswietlenie, PWM0 na PB2 + pin wlaczajacy PH8 (lcd_bl_en w fex).
+	 * DLACZEGO okres 50000 ns (20 kHz): fex mial 22 kHz, roznica jest
+	 * niezauwazalna, a 20 kHz to typowa i pewna wartosc dla sun4i-pwm.
+	 * Jesli podswietlenie dziala "odwrotnie" (0 = najjasniej),
+	 * zmien ostatnia liczbe w pwms z 0 na 1.
+	 */
+	lcd7_backlight: lcd7-backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm 0 50000 0>;
+		brightness-levels = <0 255>;
+		num-interpolated-steps = <255>;
+		default-brightness-level = <200>;
+		enable-gpios = <&pio 7 8 0>;	/* PH8 */
+	};
+
+	/*
+	 * CO: opis matrycy LVDS z timingami przeliczonymi z fex.
+	 * DLACZEGO "panel-lvds": sterownik TCON w A20 wlacza tryb LVDS
+	 * tylko wtedy, gdy podlaczony panel ma wlasnie ten compatible.
+	 * Z kazdym innym probuje wyjscia rownoleglego RGB.
+	 */
+	lcd7_panel: lcd7-panel {
+		compatible = "panel-lvds";
+		width-mm = <154>;
+		height-mm = <86>;
+		/* fex: lcd_lvds_mode = 0 (tryb NS = VESA), lcd_lvds_bitwidth = 0 (24 bit) */
+		data-mapping = "vesa-24";
+		power-supply = <&lcd7_power>;
+		backlight = <&lcd7_backlight>;
+
+		/*
+		 * CO: timingi obrazu.
+		 * DLACZEGO takie liczby: w fex "hbp" i "vbp" zawieraja juz szerokosc
+		 * impulsu sync, a "vt" jest podwojone (stara konwencja Allwinnera).
+		 *   hback = hbp - hspw = 150 - 50 = 100
+		 *   hfront = ht - x - hbp = 1344 - 1024 - 150 = 170
+		 *   vt = 1270 / 2 = 635
+		 *   vback = vbp - vspw = 20 - 10 = 10
+		 *   vfront = 635 - 600 - 20 = 15
+		 * Wynik ~64 Hz, zgodny z konfiguracja U-Boot z forum Armbian.
+		 */
+		panel-timing {
+			clock-frequency = <55000000>;
+			hactive = <1024>;
+			vactive = <600>;
+			hfront-porch = <170>;
+			hback-porch = <100>;
+			hsync-len = <50>;
+			vfront-porch = <15>;
+			vback-porch = <10>;
+			vsync-len = <10>;
+		};
+
+		port {
+			lcd7_panel_in: endpoint {
+				remote-endpoint = <&tcon0_out_lcd7>;
+			};
+		};
+	};
+};
+
+/*
+ * CO: piny PD0-PD9 w trybie LVDS0 dla kontrolera TCON0.
+ * DLACZEGO: grupa "lcd_lvds0_pins" juz istnieje w sun7i-a20.dtsi,
+ * wystarczy ja przypisac (w fex to byly piny PD00-PD09 z funkcja <3>).
+ */
+&tcon0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&lcd_lvds0_pins>;
+};
+
+/*
+ * CO: polaczenie TCON0 -> panel.
+ * DLACZEGO endpoint@0: sterownik szuka panelu dokladnie na porcie 1,
+ * endpoincie 0. Endpoint@1 jest zajety przez HDMI w pliku bazowym.
+ */
+&tcon0_out {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	tcon0_out_lcd7: endpoint@0 {
+		reg = <0>;
+		remote-endpoint = <&lcd7_panel_in>;
+	};
+};
+
+/* CO: wlaczenie kontrolera PWM i przypisanie pinu PB2 do kanalu 0. */
+&pwm {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm0_pin>;
+	status = "okay";
+};
+
+/*
+ * CO: dotyk pojemnosciowy FocalTech na I2C3 (piny PI0/PI1 na zlaczu LCD).
+ * Z fex: ctp_twi_id = 3, adres 0x38, przerwanie PH9, wybudzanie PH7.
+ * DLACZEGO "edt,edt-ft5406": mainline obsluguje uklady FT5x06 sterownikiem
+ * edt-ft5x06, ktory zastapil stary sterownik "ft5x_ts" z jadra 3.4.
+ * UWAGA: w Armbian ten sterownik nie jest domyslnie wkompilowany
+ * (CONFIG_TOUCHSCREEN_EDT_FT5X06), trzeba go dobudowac jako modul.
+ */
+&i2c3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c3_pins>;
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	touchscreen@38 {
+		compatible = "edt,edt-ft5406";
+		reg = <0x38>;
+		interrupt-parent = <&pio>;
+		interrupts = <7 9 2>;		/* PH9, zbocze opadajace */
+		wake-gpios = <&pio 7 7 0>;	/* PH7, w fex stan wysoki = praca */
+		touchscreen-size-x = <1024>;
+		touchscreen-size-y = <600>;
+	};
+};

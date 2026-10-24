@@ -1,0 +1,125 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Nakladka Device Tree: LeMaker 3.5" RGB 320x240 (BL035-RGB-002) + dotyk FT5x06
+ * Plyta: LeMaker Banana Pro (Allwinner A20), jadro mainline (Armbian current/edge)
+ *
+ * Zrodlo parametrow: fex/banana_pro_35lcd.fex z LeMaker/fex_configuration
+ *
+ * Instalacja na Armbian:
+ *   sudo armbian-add-overlay bananapro-lemaker-lcd35.dts
+ *   reboot
+ *
+ * Nie wlaczaj jednoczesnie z nakladka 7" (obie uzywaja TCON0 i tych samych pinow).
+ * Status: szkic do testow, nie sprawdzony na sprzecie.
+ */
+
+/dts-v1/;
+/plugin/;
+
+/* Sciaga:  bank H = 7,  GPIO_ACTIVE_HIGH = 0,  PWM polaryzacja 0 = normalna */
+
+&{/} {
+	/* CO: zasilanie matrycy na PH12, tak samo jak w fex. */
+	lcd35_power: lcd35-power {
+		compatible = "regulator-fixed";
+		regulator-name = "lcd35-power";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&pio 7 12 0>;		/* PH12 */
+		enable-active-high;
+	};
+
+	/* CO: podswietlenie PWM0 (PB2) + wlacznik PH8. Patrz uwagi w nakladce 7". */
+	lcd35_backlight: lcd35-backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm 0 50000 0>;
+		brightness-levels = <0 255>;
+		num-interpolated-steps = <255>;
+		default-brightness-level = <200>;
+		enable-gpios = <&pio 7 8 0>;	/* PH8 */
+	};
+
+	/*
+	 * CO: sam panel.
+	 * DLACZEGO bez timingow: ten konkretny wyswietlacz LeMakera jest juz
+	 * opisany w sterowniku panel-simple w mainline ("lemaker,bl035-rgb-002"),
+	 * z timingami zgodnymi z fex (7 MHz, htotal 408, vtotal 524/2 = 262).
+	 */
+	lcd35_panel: lcd35-panel {
+		compatible = "lemaker,bl035-rgb-002";
+		power-supply = <&lcd35_power>;
+		backlight = <&lcd35_backlight>;
+
+		port {
+			lcd35_panel_in: endpoint {
+				remote-endpoint = <&tcon0_out_lcd35>;
+			};
+		};
+	};
+};
+
+/*
+ * CO: grupa pinow PD0-PD27 jako rownolegle wyjscie RGB (funkcja "lcd0").
+ * DLACZEGO wlasna grupa: plik bazowy A20 ma gotowe grupy tylko dla LVDS,
+ * dla RGB na porcie D nie ma nic.
+ * UWAGA PD25 (sygnal DE): fex ustawial go jako zwykle wyjscie w stanie niskim,
+ * a mainline zaklada DE aktywne w stanie niskim. Jesli obraz bedzie przesuniety
+ * lub "plywa", usun "PD25" z listy ponizej i przytrzymaj go nisko gpio-hogiem.
+ */
+&pio {
+	lcd35_rgb888_pins: lcd35-rgb888-pins {
+		pins = "PD0", "PD1", "PD2", "PD3", "PD4", "PD5", "PD6", "PD7",
+		       "PD8", "PD9", "PD10", "PD11", "PD12", "PD13", "PD14", "PD15",
+		       "PD16", "PD17", "PD18", "PD19", "PD20", "PD21", "PD22", "PD23",
+		       "PD24", "PD25", "PD26", "PD27";
+		function = "lcd0";
+	};
+};
+
+&tcon0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&lcd35_rgb888_pins>;
+};
+
+/* CO: polaczenie TCON0 -> panel na porcie 1, endpoint 0 (wymog sterownika). */
+&tcon0_out {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	tcon0_out_lcd35: endpoint@0 {
+		reg = <0>;
+		remote-endpoint = <&lcd35_panel_in>;
+	};
+};
+
+&pwm {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm0_pin>;
+	status = "okay";
+};
+
+/*
+ * CO: dotyk pojemnosciowy FocalTech na I2C3 (piny PI0/PI1 na zlaczu LCD).
+ * Z fex: ctp_twi_id = 3, adres 0x38, przerwanie PH9, wybudzanie PH7,
+ * zakres 320x240 (LeMaker dodal to w commicie "Add touch screen").
+ * DLACZEGO ten sam sterownik co w 7": fex dla obu ekranow wskazuje
+ * ten sam uklad (ft5x_ts), rozni sie tylko rozdzielczosc.
+ * UWAGA: wymaga modulu edt-ft5x06, ktorego Armbian domyslnie nie buduje.
+ */
+&i2c3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c3_pins>;
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	touchscreen@38 {
+		compatible = "edt,edt-ft5406";
+		reg = <0x38>;
+		interrupt-parent = <&pio>;
+		interrupts = <7 9 2>;		/* PH9, zbocze opadajace (IRQ_TYPE_EDGE_FALLING = 2) */
+		wake-gpios = <&pio 7 7 0>;	/* PH7, w fex stan wysoki = praca */
+		touchscreen-size-x = <320>;
+		touchscreen-size-y = <240>;
+	};
+};

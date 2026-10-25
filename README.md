@@ -1,110 +1,112 @@
-# Ekrany LCD LeMaker dla Banana Pro na nowym jądrze (Armbian, mainline)
+# LeMaker LCD panels for Banana Pro on current kernels (Armbian, mainline)
 
-Fork repozytorium [LeMaker/fex_configuration](https://github.com/LeMaker/fex_configuration). Producent już nie istnieje, a oryginalne pliki `script.bin` działały tylko ze starym jądrem sunxi 3.4. Nowe jądra Linuksa korzystają z Device Tree i plik `script.bin` jest przez nie po prostu ignorowany, dlatego ekrany przestały działać.
+Fork of [LeMaker/fex_configuration](https://github.com/LeMaker/fex_configuration). The manufacturer no longer exists, and the original `script.bin` files only worked with the old sunxi 3.4 kernel. Current Linux kernels use Device Tree and simply ignore `script.bin`, which is why the panels stopped working.
 
-To repozytorium zawiera **nakładki Device Tree (overlays)**, które przenoszą ustawienia z plików fex na nowe systemy. Parametry (timingi obrazu, piny, zasilanie, podświetlenie, dotyk) zostały przepisane 1:1 z oryginalnych plików fex od LeMakera.
+This repository contains **Device Tree overlays** that bring the fex settings to current systems. The parameters (display timings, pins, power, backlight, touch) were taken 1:1 from the original LeMaker fex files.
 
-> **Status:** nakładki kompilują się i poprawnie nakładają na `sun7i-a20-bananapro.dtb` z aktualnego jądra mainline, ale nie zostały jeszcze potwierdzone na każdym ekranie. Zgłoszenia działania (lub problemów) są mile widziane.
+> **Status:** the overlays compile and apply correctly to `sun7i-a20-bananapro.dtb` from the current mainline kernel, but they have not yet been confirmed on every panel. Reports of success (or problems) are welcome.
 
-## Obsługiwane ekrany
+## Supported panels
 
-| Plik nakładki | Ekran | Złącze | Rozdzielczość | Dotyk |
+| Overlay file | Panel | Interface | Resolution | Touch |
 |---|---|---|---|---|
-| `overlays/bananapro-lemaker-lcd35.dts` | LeMaker 3.5" (BL035-RGB-002) | równoległe RGB | 320x240 | FT5x06 (pojemnościowy) |
-| `overlays/bananapro-lemaker-lcd5.dts` | LeMaker 5" | równoległe RGB | 800x480 | FT5x06 (pojemnościowy) |
-| `overlays/bananapro-lemaker-lcd7.dts` | LeMaker 7" | LVDS | 1024x600 | FT5x06 (pojemnościowy) |
+| `overlays/bananapro-lemaker-lcd35.dts` | LeMaker 3.5" (BL035-RGB-002) | parallel RGB | 320x240 | FT5x06 (capacitive) |
+| `overlays/bananapro-lemaker-lcd5.dts` | LeMaker 5" | parallel RGB | 800x480 | FT5x06 (capacitive) |
+| `overlays/bananapro-lemaker-lcd7.dts` | LeMaker 7" | LVDS | 1024x600 | FT5x06 (capacitive) |
 
-Wszystkie ekrany podłącza się do złącza LCD na płytce Banana Pro (tego samego co przy starym systemie, z tą samą przejściówką).
+All panels connect to the LCD connector on the Banana Pro (the same one as with the old system, with the same adapter board).
 
-**Naraz można włączyć tylko jedną nakładkę.** Wszystkie używają tego samego kontrolera obrazu (TCON0), tych samych pinów i tego samego adresu dotyku.
+**Only one overlay can be enabled at a time.** They all use the same display controller (TCON0), the same pins and the same touch address.
 
-## Wymagania
+## Requirements
 
-- **Płytka:** LeMaker Banana Pro (Allwinner A20). W Armbian ta sama płytka nazywa się **Banana Pi Pro** (`bananapipro`), a plik DTB to `sun7i-a20-bananapro.dtb`.
-- **System:** Armbian z jądrem `current` lub `edge` (sprawdzane na podstawie jądra 6.18).
-- **Pakiet `device-tree-compiler`** (narzędzie `dtc`). W Armbian zwykle jest już zainstalowany. Jeśli nie:
+- **Board:** LeMaker Banana Pro (Allwinner A20). In Armbian the same board is called **Banana Pi Pro** (`bananapipro`), and its DTB file is `sun7i-a20-bananapro.dtb`.
+- **System:** Armbian with the `current` or `edge` kernel (checked against kernel 6.18).
+- **`device-tree-compiler` package** (the `dtc` tool). It is usually already installed on Armbian. If not:
 
 ```bash
 sudo apt install device-tree-compiler
 ```
 
-## Gotowe obrazy systemu
+## Ready-made system images
 
-Zamiast instalować nakładkę ręcznie, możesz wgrać gotowy obraz Armbian (Debian 13 trixie, minimal) z włączonym ekranem i sterownikiem dotyku. Obrazy dla każdego ekranu są w zakładce [Releases](https://github.com/cyryllo/fex_configuration/releases). Jak samemu zbudować taki obraz, opisuje [armbian-build/README.md](armbian-build/README.md).
+Instead of installing an overlay by hand, you can flash a ready-made Armbian image (Debian 13 trixie, minimal) with the panel and the touch driver already enabled. Images for each panel are available under [Releases](https://github.com/cyryllo/fex_configuration/releases). To build such an image yourself, see [armbian-build/README.md](armbian-build/README.md).
 
-## Instalacja ekranu
+## Installing a panel
 
-1. Skopiuj repozytorium na Banana Pro:
+1. Copy the repository to the Banana Pro:
 
 ```bash
 git clone https://github.com/cyryllo/fex_configuration.git
 cd fex_configuration
 ```
 
-2. Wgraj nakładkę dla swojego ekranu (przykład dla 7"):
+2. Install the overlay for your panel (example for the 7"):
 
 ```bash
 sudo armbian-add-overlay overlays/bananapro-lemaker-lcd7.dts
 ```
 
-Polecenie kompiluje plik, kopiuje wynik do `/boot/overlay-user/` i dopisuje jego nazwę do linii `user_overlays=` w pliku `/boot/armbianEnv.txt`.
+This command compiles the file, copies the result to `/boot/overlay-user/` and adds its name to the `user_overlays=` line in `/boot/armbianEnv.txt`.
 
-3. Uruchom ponownie:
+3. Reboot:
 
 ```bash
 sudo reboot
 ```
 
-Obraz powinien pojawić się na ekranie po starcie jądra. Logo i napisy z bootloadera (U-Boot) nadal będą tylko na HDMI, to normalne.
+The picture should appear on the panel once the kernel starts. The bootloader (U-Boot) logo and messages will still only show on HDMI, this is normal.
 
-## Zmiana lub wyłączenie ekranu
+## Changing or disabling the panel
 
-Otwórz plik `/boot/armbianEnv.txt`:
+Open `/boot/armbianEnv.txt`:
 
 ```bash
 sudo nano /boot/armbianEnv.txt
 ```
 
-Znajdź linię `user_overlays=` i zostaw na niej tylko jedną nakładkę ekranu, np.:
+Find the `user_overlays=` line and leave only one panel overlay on it, for example:
 
 ```
 user_overlays=bananapro-lemaker-lcd5
 ```
 
-Żeby całkiem wyłączyć ekran, usuń jego nazwę z tej linii. Po zmianie zrób `sudo reboot`.
+To disable the panel completely, remove its name from this line. Run `sudo reboot` after the change.
 
-Jeśli zmieniasz ekran na inny, najpierw usuń starą nazwę z `user_overlays=`, a dopiero potem dodaj nową przez `armbian-add-overlay`.
+If you switch to a different panel, first remove the old name from `user_overlays=`, and only then add the new one with `armbian-add-overlay`.
 
-## Dotyk (wymaga jednego dodatkowego modułu)
+## Touch (requires one extra module)
 
-Wszystkie trzy ekrany mają ten sam układ dotyku FocalTech FT5x06. Obsługuje go sterownik `edt-ft5x06`, którego **Armbian domyślnie nie buduje**. Obraz zadziała bez niego, dotyk nie. Moduł buduje się raz i działa z każdym z ekranów.
+All three panels use the same FocalTech FT5x06 touch controller. It is handled by the `edt-ft5x06` driver, which **Armbian does not build by default**. The display works without it, touch does not. The module only needs to be built once and works with every panel.
 
-### Sposób A: zbudowanie samego modułu na płytce (prostszy)
+The ready-made images from [Releases](https://github.com/cyryllo/fex_configuration/releases) already include this module.
+
+### Option A: build just the module on the board (simpler)
 
 ```bash
-# Narzędzia i nagłówki jądra pasujące do zainstalowanego jądra
-# (można je też zainstalować przez armbian-config)
+# Build tools and kernel headers matching the installed kernel
+# (they can also be installed via armbian-config)
 sudo apt install build-essential linux-headers-current-sunxi
 
-# Źródło sterownika w wersji odpowiadającej jądru (tu: 6.18)
+# Driver source matching the kernel version (here: 6.18)
 mkdir ~/ft5x06 && cd ~/ft5x06
 wget https://raw.githubusercontent.com/torvalds/linux/v6.18/drivers/input/touchscreen/edt-ft5x06.c
 echo 'obj-m += edt-ft5x06.o' > Makefile
 
-# Kompilacja i instalacja modułu
+# Build and install the module
 make -C /lib/modules/$(uname -r)/build M=$PWD modules
 sudo make -C /lib/modules/$(uname -r)/build M=$PWD modules_install
 sudo depmod -a
 sudo reboot
 ```
 
-Jeśli masz jądro `edge` albo inną wersję niż 6.18, zamień `v6.18` w adresie na swoją wersję (pierwsze dwie liczby z `uname -r`, np. `v7.3`) i `current` na `edge` w nazwie pakietu z nagłówkami.
+If you have the `edge` kernel or a version other than 6.18, replace `v6.18` in the URL with your version (the first two numbers of `uname -r`, e.g. `v7.3`) and `current` with `edge` in the headers package name.
 
-**Uwaga:** po aktualizacji jądra moduł trzeba zbudować ponownie (te same polecenia).
+**Note:** after a kernel update the module has to be built again (same commands).
 
-### Sposób B: własne jądro z Armbian build framework
+### Option B: custom kernel with the Armbian build framework
 
-Na komputerze z Linuksem (budowanie odbywa się w kontenerze Docker):
+On a Linux computer (the build runs in a Docker container):
 
 ```bash
 git clone https://github.com/armbian/build.git
@@ -112,78 +114,79 @@ cd build
 ./compile.sh kernel-config BOARD=bananapipro BRANCH=current
 ```
 
-W menu włącz jako moduł (`M`):
+In the menu, enable as a module (`M`):
 `Device Drivers > Input device support > Touchscreens > EDT FocalTech FT5x06 I2C Touchscreen support`
 
-Potem zbuduj jądro:
+Then build the kernel:
 
 ```bash
 ./compile.sh kernel BOARD=bananapipro BRANCH=current
 ```
 
-Gotowe pakiety `.deb` znajdziesz w `output/debs/`. Zainstaluj na płytce pakiet `linux-image-...` przez `sudo dpkg -i` i zrób reboot. Ten sposób jest wygodniejszy na dłuższą metę, bo moduł jest częścią jądra.
+The resulting `.deb` packages are in `output/debs/`. Install the `linux-image-...` package on the board with `sudo dpkg -i` and reboot. This option is more convenient in the long run, because the module is part of the kernel.
 
-## Sprawdzenie, czy działa
+To build a complete image with the overlays and the touch driver, use the script in [armbian-build/](armbian-build/README.md).
+
+## Checking that it works
 
 ```bash
-# Czy panel i kontroler obrazu wystartowały
+# Did the panel and display controller start
 dmesg | grep -iE "sun4i|lvds|panel"
 
-# Czy jest podświetlenie (powinien pojawić się katalog np. lcd7-backlight)
+# Is there a backlight (a directory such as lcd7-backlight should appear)
 ls /sys/class/backlight/
 
-# Ręczna zmiana jasności (0-255)
+# Set brightness manually (0-255)
 echo 120 | sudo tee /sys/class/backlight/*/brightness
 
-# Czy układ dotyku odpowiada na I2C (szukaj "38" lub "UU")
+# Does the touch controller answer on I2C (look for "38" or "UU")
 sudo apt install i2c-tools
 i2cdetect -l
-sudo i2cdetect -y 3      # numer magistrali może być inny, sprawdź i2cdetect -l
+sudo i2cdetect -y 3      # the bus number may differ, check i2cdetect -l
 
-# Czy dotyk jest widoczny jako urządzenie wejściowe
+# Is touch visible as an input device
 cat /proc/bus/input/devices | grep -A4 -i edt
 ```
 
-## Rozwiązywanie problemów
+## Troubleshooting
 
-| Objaw | Co sprawdzić / zmienić |
+| Symptom | What to check / change |
 |---|---|
-| Ekran czarny, brak podświetlenia | Czy w `/boot/armbianEnv.txt` jest tylko jedna nakładka ekranu. Czy `dmesg` pokazuje błędy `panel` lub `pwm`. |
-| Podświetlenie działa odwrotnie (0 = najjaśniej) | W pliku nakładki, w linii `pwms = <&pwm 0 50000 0>;` zmień ostatnie `0` na `1` i wgraj nakładkę ponownie. |
-| 7": czerwony lub pusty ekran po starcie jądra | Znany problem z polaryzacją LVDS w części jąder. Jądro Armbian ma już poprawkę, na innych dystrybucjach może jej brakować. |
-| 5" lub 3.5": kolorowy szum, migoczące krawędzie | W bloku `panel-timing` (5") dopisz `pixelclk-active = <0>;` albo `<1>;` i sprawdź, który działa lepiej. |
-| 3.5": obraz przesunięty lub "pływa" | Opis w komentarzu przy grupie pinów w pliku nakładki (sygnał DE na PD25). |
-| Dotyk nie działa | Czy zbudowany jest moduł `edt-ft5x06` (`lsmod \| grep edt`). Czy `i2cdetect` widzi adres `38`. |
-| Dotyk w lustrzanym odbiciu lub z zamienionymi osiami | W węźle `touchscreen@38` dopisz `touchscreen-inverted-x;`, `touchscreen-inverted-y;` lub `touchscreen-swapped-x-y;`. |
+| Black screen, no backlight | Make sure there is only one panel overlay in `/boot/armbianEnv.txt`. Check `dmesg` for `panel` or `pwm` errors. |
+| Backlight works in reverse (0 = brightest) | In the overlay file, in the line `pwms = <&pwm 0 50000 0>;` change the last `0` to `1` and install the overlay again. |
+| 7": red or blank screen after the kernel starts | Known LVDS polarity issue in some kernels. The Armbian kernel already has the fix, other distributions may not. |
+| 5" or 3.5": colour noise, flickering edges | In the `panel-timing` block (5") add `pixelclk-active = <0>;` or `<1>;` and see which works better. |
+| 3.5": picture shifted or "floating" | See the comment next to the pin group in the overlay file (DE signal on PD25). |
+| Touch does not work | Check that the `edt-ft5x06` module is built (`lsmod \| grep edt`) and that `i2cdetect` sees address `38`. |
+| Touch mirrored or with swapped axes | In the `touchscreen@38` node add `touchscreen-inverted-x;`, `touchscreen-inverted-y;` or `touchscreen-swapped-x-y;`. |
 
-Po każdej zmianie w pliku `.dts` wgraj go ponownie przez `sudo armbian-add-overlay ...` i zrób reboot.
+After every change to a `.dts` file, install it again with `sudo armbian-add-overlay ...` and reboot.
 
-## Jak przeliczono parametry z fex
+## How the fex parameters were converted
 
-Pliki fex zapisywały timingi inaczej niż Device Tree:
+The fex files stored timings differently from Device Tree:
 
-- `lcd_hbp` i `lcd_vbp` zawierają już szerokość impulsu synchronizacji, więc: `hback-porch = lcd_hbp - lcd_hspw`, `vback-porch = lcd_vbp - lcd_vspw`.
-- `lcd_vt` jest zapisany jako podwojona wartość (stara konwencja Allwinnera), więc całkowita liczba linii to `lcd_vt / 2`.
-- Przednie marginesy: `hfront-porch = lcd_ht - lcd_x - lcd_hbp`, `vfront-porch = lcd_vt/2 - lcd_y - lcd_vbp`.
+- `lcd_hbp` and `lcd_vbp` already include the sync pulse width, so: `hback-porch = lcd_hbp - lcd_hspw`, `vback-porch = lcd_vbp - lcd_vspw`.
+- `lcd_vt` is stored as a doubled value (old Allwinner convention), so the total number of lines is `lcd_vt / 2`.
+- Front porches: `hfront-porch = lcd_ht - lcd_x - lcd_hbp`, `vfront-porch = lcd_vt/2 - lcd_y - lcd_vbp`.
 
-Dokładne wyliczenia dla każdego ekranu są opisane w komentarzach w plikach nakładek.
+The exact calculations for each panel are described in the comments in the overlay files.
 
-Najważniejsze różnice techniczne względem starego systemu:
+The most important technical differences from the old system:
 
-- **7" LVDS:** kontroler obrazu A20 włącza tryb LVDS tylko wtedy, gdy panel ma `compatible = "panel-lvds"`. Dlatego nakładka używa właśnie tego opisu.
-- **3.5":** ten ekran jest już opisany w jądrze (`lemaker,bl035-rgb-002`), więc nakładka nie podaje timingów.
-- **5":** ekranu nie ma w jądrze, timingi są podane w nakładce przez ogólny opis `panel-dpi`.
-- **Dotyk:** stary sterownik `ft5x_ts` zastąpił sterownik `edt-ft5x06` z mainline.
+- **7" LVDS:** the A20 display controller only enables LVDS mode when the panel has `compatible = "panel-lvds"`. That is why the overlay uses exactly this description.
+- **3.5":** this panel is already described in the kernel (`lemaker,bl035-rgb-002`), so the overlay does not specify timings.
+- **5":** this panel is not in the kernel, so the timings are given in the overlay using the generic `panel-dpi` description.
+- **Touch:** the old `ft5x_ts` driver was replaced by the mainline `edt-ft5x06` driver.
 
-## Stare pliki (jądro 3.4)
+## Old files (kernel 3.4)
 
-Katalog `stare jądro sunxi 3.4/` (podkatalogi `bin/` i `fex/`) zawiera oryginalne pliki od LeMakera. Pliki działają tylko ze starymi obrazami systemu z jądrem sunxi 3.4: wybrany plik `.bin` zmieniało się na `script.bin` i kopiowało na pierwszą partycję karty. Na Armbian z nowym jądrem nie mają żadnego efektu, zostały jako źródło parametrów.
+The `stare jądro sunxi 3.4/` directory ("old sunxi 3.4 kernel", with `bin/` and `fex/` subdirectories) contains the original LeMaker files. They only work with old system images running the sunxi 3.4 kernel: the chosen `.bin` file was renamed to `script.bin` and copied to the first partition of the card. On Armbian with a current kernel they have no effect and are kept as the source of the parameters.
 
-W `stare jądro sunxi 3.4/fex/` są też pliki dla ekranu 10.1" i dla Banana Pi (bez "Pro"). Nakładek dla nich na razie nie ma, ale można je przygotować w ten sam sposób.
+`stare jądro sunxi 3.4/fex/` also contains files for the 10.1" panel and for the Banana Pi (non-"Pro"). There are no overlays for them yet, but they can be prepared the same way.
 
-## Źródła
+## Sources
 
-- Oryginalne repozytorium LeMaker: <https://github.com/LeMaker/fex_configuration>
-- Dokumentacja nakładek Armbian: <https://docs.armbian.com/User-Guide_Armbian_overlays/>
-- Wątek o ekranie 7" na Banana Pi Pro z mainline (forum Armbian): <https://forum.armbian.com/topic/7233-bananapi-pro-7-touchlcd-with-debian-buster-and-mainline-kernel-5xxxx/>
-
+- Original LeMaker repository: <https://github.com/LeMaker/fex_configuration>
+- Armbian overlay documentation: <https://docs.armbian.com/User-Guide_Armbian_overlays/>
+- Thread about the 7" panel on Banana Pi Pro with mainline (Armbian forum): <https://forum.armbian.com/topic/7233-bananapi-pro-7-touchlcd-with-debian-buster-and-mainline-kernel-5xxxx/>

@@ -61,7 +61,9 @@ esac
 
 # CO: nakladki spoza LeMaker (np. dodane przez armbian-add-overlay) zostaja.
 # DLACZEGO: skrypt ma zmieniac tylko ekran, nie cudze ustawienia.
-inne=$(aktywne_nakladki | grep -v "^${PREFIX}" | tr '\n' ' ' | sed 's/ *$//')
+# DLACZEGO "|| true": gdy nie ma innych nakladek, grep -v nic nie znajduje
+# i zwraca blad, a przy pipefail przerwalby skrypt bez komunikatu.
+inne=$({ aktywne_nakladki | grep -v "^${PREFIX}" || true; } | tr '\n' ' ' | sed 's/ *$//')
 
 nowe="${inne}"
 if [[ "${wybor}" != "off" ]]; then

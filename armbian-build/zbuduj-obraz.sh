@@ -125,7 +125,7 @@ cp "${SKRYPT_DIR}/userpatches/customize-image.sh" "${UP}/"
 chmod +x "${UP}/customize-image.sh"
 rm -f "${UP}/overlay/lemaker-lcd/"*.dts
 cp "${DTS_SRC}"/bananapro-lemaker-lcd*.dts "${UP}/overlay/lemaker-lcd/"
-cp "${SKRYPT_DIR}/lemaker-lcd" "${UP}/overlay/lemaker-lcd/"
+cp "${SKRYPT_DIR}/lemaker-lcd" "${SKRYPT_DIR}/lemaker-touch-retry" "${SKRYPT_DIR}/lemaker-touch-retry.service" "${UP}/overlay/lemaker-lcd/"
 echo "${EKRAN}" > "${UP}/overlay/lemaker-lcd/ekran"
 
 # CO: wlasciwe budowanie, odpowiednik:

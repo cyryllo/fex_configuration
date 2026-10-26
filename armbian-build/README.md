@@ -7,6 +7,7 @@ Compared to the ready-made image from armbian.com:
 - the `edt-ft5x06` touch driver is enabled in the kernel (Armbian does not build it by default),
 - compiled overlays for all panels (3.5", 5", 7") are already in `/boot/overlay-user/`,
 - the 7" panel is enabled by default, other panels are switched with `sudo lemaker-lcd 5` (or `35`, `7`, `off`) or by uncommenting one line in `/boot/armbianEnv.txt`,
+- the `lemaker-touch-retry` service is enabled, so touch works right after boot,
 - `evtest` and `i2c-tools` are installed for checking touch,
 - the `.dts` overlay sources are in `/usr/local/share/lemaker-lcd/` (for adjustments on the board).
 
@@ -22,6 +23,7 @@ The build is based on the official [Armbian build framework](https://docs.armbia
 |---|---|
 | `zbuduj-obraz.sh` | Script that does everything ("build image"): downloads Armbian build, copies the files, starts the build. |
 | `lemaker-lcd` | Panel switch script installed on the board as `/usr/local/sbin/lemaker-lcd`. |
+| `lemaker-touch-retry`, `lemaker-touch-retry.service` | Service that retries binding the touch driver after boot (the first attempt at boot fails with an I2C error). |
 | `userpatches/config-bananapro-lcd.conf` | Build settings (board, Debian 13, kernel) and enabling the touch driver. |
 | `userpatches/customize-image.sh` | Run by Armbian inside the image: compiles the overlays, installs `lemaker-lcd` and enables the default panel. |
 
@@ -76,7 +78,7 @@ cd ~/fex_configuration          # wherever you cloned this repository
 mkdir -p ~/armbian-build/userpatches/overlay/lemaker-lcd
 cp armbian-build/userpatches/config-bananapro-lcd.conf ~/armbian-build/userpatches/
 cp armbian-build/userpatches/customize-image.sh        ~/armbian-build/userpatches/
-cp overlays/bananapro-lemaker-lcd*.dts armbian-build/lemaker-lcd ~/armbian-build/userpatches/overlay/lemaker-lcd/
+cp overlays/bananapro-lemaker-lcd*.dts armbian-build/lemaker-lcd armbian-build/lemaker-touch-retry armbian-build/lemaker-touch-retry.service ~/armbian-build/userpatches/overlay/lemaker-lcd/
 echo 7 > ~/armbian-build/userpatches/overlay/lemaker-lcd/ekran     # default panel: 7, 5, 35 or brak
 
 # 3. Build

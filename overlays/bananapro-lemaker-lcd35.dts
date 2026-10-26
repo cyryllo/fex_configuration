@@ -10,7 +10,8 @@
  *   reboot
  *
  * Nie wlaczaj jednoczesnie z nakladka 7" (obie uzywaja TCON0 i tych samych pinow).
- * Status: szkic do testow, nie sprawdzony na sprzecie.
+ * Status: niesprawdzony na sprzecie (brak ekranu). Wspolne z 5" (sprawdzonym):
+ * zlacze RGB, piny, zasilanie, podswietlenie i dotyk.
  */
 
 /dts-v1/;
@@ -118,7 +119,15 @@
 		reg = <0x38>;
 		interrupt-parent = <&pio>;
 		interrupts = <7 9 2>;		/* PH9, zbocze opadajace (IRQ_TYPE_EDGE_FALLING = 2) */
-		wake-gpios = <&pio 7 7 0>;	/* PH7, w fex stan wysoki = praca */
+		/*
+		 * CO: PH7 to linia RESET ukladu dotyku (w fex: ctp_wakeup), aktywna nisko.
+		 * DLACZEGO reset-gpios, a nie wake-gpios: przy wake-gpios sterownik
+		 * czeka po wlaczeniu tylko 5 ms i uklad jeszcze nie odpowiada na I2C
+		 * (blad "touchscreen probe failed", sprawdzone na 7"). Przy reset-gpios
+		 * czeka 300 ms, tyle ile uklad FocalTech potrzebuje na start.
+		 * Ostatnia liczba 1 = GPIO_ACTIVE_LOW.
+		 */
+		reset-gpios = <&pio 7 7 1>;	/* PH7 */
 		touchscreen-size-x = <320>;
 		touchscreen-size-y = <240>;
 	};

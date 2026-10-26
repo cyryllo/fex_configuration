@@ -4,7 +4,7 @@ Fork of [LeMaker/fex_configuration](https://github.com/LeMaker/fex_configuration
 
 This repository contains **Device Tree overlays** that bring the fex settings to current systems. The parameters (display timings, pins, power, backlight, touch) were taken 1:1 from the original LeMaker fex files.
 
-> **Status:** the 5" and 7" panels are confirmed working on real hardware (display, kernel 6.18.58). Touch is being tested. The 3.5" overlay is untested (no hardware). It shares the RGB interface, pins, power, backlight and touch with the confirmed 5" overlay, so it will most likely work, but it has not been verified. Reports of success (or problems) are welcome.
+> **Status:** the 5" and 7" panels are confirmed working on real hardware (display, kernel 6.18). Touch is confirmed working on the 7" panel (it needs the `lemaker-touch-retry` service, see [Touch](#touch-requires-one-extra-module)). The 5" panel uses the same touch controller and wiring. The 3.5" overlay is untested (no hardware). It shares the RGB interface, pins, power, backlight and touch with the confirmed 5" overlay, so it will most likely work, but it has not been verified. Reports of success (or problems) are welcome.
 
 ## Supported panels
 
@@ -119,7 +119,23 @@ Armbian keeps `/boot` on the same ext4 partition as the system, so `armbianEnv.t
 
 All three panels use the same FocalTech FT5x06 touch controller. It is handled by the `edt-ft5x06` driver, which **Armbian does not build by default**. The display works without it, touch does not. The module only needs to be built once and works with every panel.
 
-The ready-made images from [Releases](https://github.com/cyryllo/fex_configuration/releases) already include this module.
+The ready-made images from [Releases](https://github.com/cyryllo/fex_configuration/releases) already include this module and the retry service described below.
+
+### Retry service (required)
+
+At boot the driver's first attempt to talk to the touch controller fails with an I2C bus error (`mv64xxx_i2c_fsm: Ctlr Error ... status: 0x0`, then `touchscreen probe failed` / `error -11`). The same attempt a moment later succeeds. The small `lemaker-touch-retry` service retries binding the driver after boot, so touch works right away:
+
+```bash
+cd fex_configuration
+sudo install -m 0755 armbian-build/lemaker-touch-retry /usr/local/sbin/
+sudo install -m 0644 armbian-build/lemaker-touch-retry.service /etc/systemd/system/
+sudo systemctl enable lemaker-touch-retry.service
+sudo reboot
+```
+
+After the reboot `journalctl -b -u lemaker-touch-retry` should show `dotyk 2-0038 dziala` ("touch 2-0038 works"), and `grep -A1 -i edt /proc/bus/input/devices` should list `generic ft5x06`.
+
+To bind the driver by hand without rebooting: `echo 2-0038 | sudo tee /sys/bus/i2c/drivers/edt_ft5x06/bind`.
 
 ### Option A: build just the module on the board (simpler)
 
@@ -197,7 +213,9 @@ cat /proc/bus/input/devices | grep -A4 -i edt
 | 7": red or blank screen after the kernel starts | Known LVDS polarity issue in some kernels. The Armbian kernel already has the fix, other distributions may not. |
 | 5" or 3.5": colour noise, flickering edges | In the `panel-timing` block (5") add `pixelclk-active = <0>;` or `<1>;` and see which works better. |
 | 3.5": picture shifted or "floating" | See the comment next to the pin group in the overlay file (DE signal on PD25). |
-| Touch does not work | Check that the `edt-ft5x06` module is built (`lsmod \| grep edt`) and that `i2cdetect` sees address `38`. |
+| Touch does not work, `dmesg` shows `touchscreen probe failed` / `error -11` | Install the `lemaker-touch-retry` service (section [Touch](#touch-requires-one-extra-module)), or bind the driver by hand: `echo 2-0038 \| sudo tee /sys/bus/i2c/drivers/edt_ft5x06/bind`. |
+| Touch does not work, nothing about `edt` in `dmesg` | Check that the `edt-ft5x06` module is built (`lsmod \| grep edt`) and that `sudo i2cdetect -y 2` sees address `38` (I2C3 is bus number 2, check with `i2cdetect -l`). |
+| `i2cdetect` does not show `38` at all | The touch controller is held in reset. Use an overlay from this repository dated after 2026-10-26: PH7 must be `reset-gpios = <&pio 7 7 1>`, not `wake-gpios`. |
 | Touch mirrored or with swapped axes | In the `touchscreen@38` node add `touchscreen-inverted-x;`, `touchscreen-inverted-y;` or `touchscreen-swapped-x-y;`. |
 
 After every change to a `.dts` file, install it again with `sudo armbian-add-overlay ...` and reboot.
@@ -217,7 +235,7 @@ The most important technical differences from the old system:
 - **7" LVDS:** the A20 display controller only enables LVDS mode when the panel has `compatible = "panel-lvds"`. That is why the overlay uses exactly this description.
 - **3.5":** this panel is already described in the kernel (`lemaker,bl035-rgb-002`), so the overlay does not specify timings.
 - **5":** this panel is not in the kernel, so the timings are given in the overlay using the generic `panel-dpi` description.
-- **Touch:** the old `ft5x_ts` driver was replaced by the mainline `edt-ft5x06` driver.
+- **Touch:** the old `ft5x_ts` driver was replaced by the mainline `edt-ft5x06` driver. The fex pin `ctp_wakeup` (PH7) is in fact the controller's active-low RESET line, so the overlay describes it as `reset-gpios`. With `wake-gpios` the driver waits only 5 ms after power-up and the controller does not answer yet, with `reset-gpios` it waits 300 ms. The controller identifies itself as `generic ft5x06 (79)` (register 0xA8 = 0x79, firmware 0x06).
 
 ## Old files (kernel 3.4)
 

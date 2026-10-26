@@ -1,0 +1,11 @@
+[Unit]
+Description=LeMaker LCD: retry binding the FT5x06 touch driver
+After=systemd-modules-load.service systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lemaker-touch-retry
+
+[Install]
+WantedBy=multi-user.target

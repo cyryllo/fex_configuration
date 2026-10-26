@@ -1,0 +1,32 @@
+#!/bin/bash
+# lemaker-touch-retry: ponawia podpiecie sterownika dotyku LeMaker po starcie
+#
+# CO: jesli uklad dotyku (FT5x06, adres 0x38) z nakladki LeMaker nie ma
+# podpietego sterownika, probuje go podpiac jeszcze kilka razy.
+# DLACZEGO: przy starcie systemu pierwsza proba sterownika edt-ft5x06
+# trafia na blad magistrali I2C ("Ctlr Error ... status: 0x0", "probe failed",
+# blad -11), a ta sama proba chwile pozniej przechodzi (sprawdzone na 7").
+# Uruchamiane przez lemaker-touch-retry.service.
+
+DRIVER=/sys/bus/i2c/drivers/edt_ft5x06
+PROBY=5
+
+modprobe edt_ft5x06 2> /dev/null || true
+[[ -d "${DRIVER}" ]] || exit 0
+
+for dev in /sys/bus/i2c/devices/*-0038; do
+	[[ -e "${dev}/of_node/compatible" ]] || continue
+	grep -qa "edt,edt-ft5406" "${dev}/of_node/compatible" || continue
+	name=$(basename "${dev}")
+	for ((i = 1; i <= PROBY; i++)); do
+		[[ -e "${dev}/driver" ]] && break
+		echo "lemaker-touch-retry: proba ${i}/${PROBY} dla ${name}"
+		echo "${name}" > "${DRIVER}/bind" 2> /dev/null || sleep 2
+	done
+	if [[ -e "${dev}/driver" ]]; then
+		echo "lemaker-touch-retry: dotyk ${name} dziala"
+	else
+		echo "lemaker-touch-retry: nie udalo sie podpiac ${name}" >&2
+	fi
+done
+exit 0

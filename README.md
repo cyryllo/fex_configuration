@@ -1,250 +1,124 @@
-# LeMaker LCD panels for Banana Pro on current kernels (Armbian, mainline)
+# LeMaker LCD panels for Banana Pro on current kernels
 
-Fork of [LeMaker/fex_configuration](https://github.com/LeMaker/fex_configuration). The manufacturer no longer exists, and the original `script.bin` files only worked with the old sunxi 3.4 kernel. Current Linux kernels use Device Tree and simply ignore `script.bin`, which is why the panels stopped working.
+Ready-to-use Armbian images (Debian 13 trixie, kernel 6.18) for the **LeMaker Banana Pro** with working **LeMaker LCD panels and touch**. Fork of [LeMaker/fex_configuration](https://github.com/LeMaker/fex_configuration), whose old `script.bin` files only work with the sunxi 3.4 kernel.
 
-This repository contains **Device Tree overlays** that bring the fex settings to current systems. The parameters (display timings, pins, power, backlight, touch) were taken 1:1 from the original LeMaker fex files.
+| Panel | Display | Touch |
+|---|---|---|
+| 7" LVDS 1024x600 | ✅ tested | ✅ tested |
+| 5" RGB 800x480 | ✅ tested | same controller as 7" |
+| 3.5" RGB 320x240 | not tested (no hardware) | same controller as 7" |
 
-> **Status:** the 5" and 7" panels are confirmed working on real hardware (display, kernel 6.18). Touch is confirmed working on the 7" panel (it needs the `lemaker-touch-retry` service, see [Touch](#touch-requires-one-extra-module)). The 5" panel uses the same touch controller and wiring. The 3.5" overlay is untested (no hardware). It shares the RGB interface, pins, power, backlight and touch with the confirmed 5" overlay, so it will most likely work, but it has not been verified. Reports of success (or problems) are welcome.
+The images also work on the original Banana Pi (non-"Pro").
 
-## Supported panels
+## Quick start (recommended)
 
-| Overlay file | Panel | Interface | Resolution | Touch |
-|---|---|---|---|---|
-| `overlays/bananapro-lemaker-lcd35.dts` | LeMaker 3.5" (BL035-RGB-002) | parallel RGB | 320x240 | FT5x06 (capacitive) |
-| `overlays/bananapro-lemaker-lcd5.dts` | LeMaker 5" | parallel RGB | 800x480 | FT5x06 (capacitive) |
-| `overlays/bananapro-lemaker-lcd7.dts` | LeMaker 7" | LVDS | 1024x600 | FT5x06 (capacitive) |
+1. Download an image from [Releases](https://github.com/cyryllo/fex_configuration/releases):
+   - **`..._xfce_desktop.img.xz`**: XFCE desktop, 7" panel enabled
+   - **`..._minimal.img.xz`**: no desktop, LCD disabled (HDMI only), a base for your own setup
+2. Write it to an SD card with [USBImager](https://gitlab.com/bztsrc/usbimager) or balenaEtcher.
+3. Connect the panel, insert the card, power on. The LCD shows a picture once the kernel starts (U-Boot messages are on HDMI only).
 
-All panels connect to the LCD connector on the Banana Pro (the same one as with the old system, with the same adapter board).
-
-**Only one overlay can be enabled at a time.** They all use the same display controller (TCON0), the same pins and the same touch address.
-
-## Requirements
-
-- **Board:** LeMaker Banana Pro (Allwinner A20). In Armbian the same board is called **Banana Pi Pro** (`bananapipro`), and its DTB file is `sun7i-a20-bananapro.dtb`.
-- **System:** Armbian with the `current` or `edge` kernel (checked against kernel 6.18).
-- **`device-tree-compiler` package** (the `dtc` tool). It is usually already installed on Armbian. If not:
+## Choosing the panel
 
 ```bash
-sudo apt install device-tree-compiler
+sudo lemaker-lcd          # show the current panel
+sudo lemaker-lcd 5        # 7, 5, 35 or off
+sudo reboot
 ```
 
-## Ready-made system images
+Or uncomment one line at the end of `/boot/armbianEnv.txt`:
 
-Instead of installing an overlay by hand, you can flash a ready-made Armbian image (Debian 13 trixie, XFCE desktop) with the overlays and the touch driver already included. Images are available under [Releases](https://github.com/cyryllo/fex_configuration/releases).
+```
+#user_overlays=bananapro-lemaker-lcd35
+user_overlays=bananapro-lemaker-lcd5
+#user_overlays=bananapro-lemaker-lcd7
+```
 
-The image also works on the original **Banana Pi** (non-"Pro", Allwinner A20, same LCD connector): it boots and the LeMaker panels work (tested by the author). Note that the image is built for the Banana Pro and uses its device tree (`sun7i-a20-bananapro.dtb`), so a few board-specific details that differ between the two boards (e.g. Wi-Fi, which only the Pro has) may not match.
+`/boot` is on the ext4 system partition, so it cannot be edited from Windows. Boot once with HDMI (or SSH) to switch the panel.
 
-One image supports all panels. The 7" panel is enabled by default, for another panel see [Changing or disabling the panel](#changing-or-disabling-the-panel). To build such an image yourself, see [armbian-build/README.md](armbian-build/README.md).
+## Problems
 
-## Installing a panel
+| Symptom | Fix |
+|---|---|
+| Backlight works in reverse | In the overlay change `pwms = <&pwm 0 50000 0>;` to `... 1>;` |
+| 5"/3.5": colour noise | Add `pixelclk-active = <0>;` or `<1>;` to `panel-timing` |
+| Touch mirrored or axes swapped | Add `touchscreen-inverted-x;`, `-inverted-y;` or `touchscreen-swapped-x-y;` to `touchscreen@38` |
+| Touch stopped after `apt upgrade` | The official kernel has no touch driver: `sudo apt-mark hold linux-image-current-sunxi linux-dtb-current-sunxi` |
 
-1. Copy the repository to the Banana Pro:
+Overlay sources on the board are in `/usr/local/share/lemaker-lcd/`. After editing, run `sudo armbian-add-overlay <file>.dts`, then `sudo lemaker-lcd <panel>` (keeps only one panel active) and reboot.
+
+Reports are welcome in the [Armbian forum thread](https://forum.armbian.com/topic/7233-bananapi-pro-7-touchlcd-with-debian-buster-and-mainline-kernel-5xxxx/) or as GitHub issues. Please include:
+
+```bash
+dmesg | grep -iE "sun4i|lvds|panel|edt|pwm|i2c-2"
+journalctl -b -u lemaker-touch-retry
+```
+
+---
+
+## Technical details
+
+### Repository contents
+
+| Path | Contents |
+|---|---|
+| `overlays/` | Device Tree overlays for the 3.5", 5" and 7" panels |
+| `armbian-build/` | Scripts to build the images yourself, see [armbian-build/README.md](armbian-build/README.md) |
+| `stare jądro sunxi 3.4/` | Original LeMaker `fex`/`bin` files for the old 3.4 kernel, kept as the source of the parameters |
+
+### Manual installation on an existing Armbian
+
+Requires Armbian `current` (6.18) for the Banana Pro (`bananapipro`, DTB `sun7i-a20-bananapro.dtb`) and `device-tree-compiler`.
 
 ```bash
 git clone https://github.com/cyryllo/fex_configuration.git
 cd fex_configuration
-```
 
-2. Install the overlay for your panel (example for the 7"):
-
-```bash
-sudo armbian-add-overlay overlays/bananapro-lemaker-lcd7.dts
-```
-
-This command compiles the file, copies the result to `/boot/overlay-user/` and adds its name to the `user_overlays=` line in `/boot/armbianEnv.txt`.
-
-3. Reboot:
-
-```bash
-sudo reboot
-```
-
-The picture should appear on the panel once the kernel starts. The bootloader (U-Boot) logo and messages will still only show on HDMI, this is normal.
-
-## Changing or disabling the panel
-
-Only one panel overlay can be active at a time. Every change takes effect after `sudo reboot`.
-
-### Option 1: the `lemaker-lcd` script (recommended)
-
-The ready-made images include the `lemaker-lcd` script:
-
-```bash
-sudo lemaker-lcd          # shows which panel is enabled
-sudo lemaker-lcd 5        # enables the 5" panel
-sudo lemaker-lcd 7        # enables the 7" panel
-sudo lemaker-lcd 35       # enables the 3.5" panel
-sudo lemaker-lcd off      # disables the LCD, HDMI only
-sudo reboot
-```
-
-The script only changes the LeMaker panel, other overlays on the `user_overlays=` line stay as they are. A backup of the previous file is saved as `/boot/armbianEnv.txt.bak`.
-
-If you installed the overlays by hand (section [Installing a panel](#installing-a-panel)), you can use the script too. Install all three overlays once, then copy the script:
-
-```bash
-cd fex_configuration
+# overlays for all panels + panel switch command
 for f in overlays/bananapro-lemaker-lcd*.dts; do sudo armbian-add-overlay "$f"; done
-sudo install -m 0755 armbian-build/lemaker-lcd /usr/local/sbin/lemaker-lcd
-sudo lemaker-lcd 7        # enables one panel and turns the others off
-sudo reboot
-```
+sudo install -m 0755 armbian-build/lemaker-lcd /usr/local/sbin/
+sudo lemaker-lcd 7        # your panel
 
-### Option 2: editing `/boot/armbianEnv.txt` by hand
-
-```bash
-sudo nano /boot/armbianEnv.txt
-```
-
-In the ready-made images the end of the file contains a block with one line per panel. Uncomment exactly one line (remove the `#`) and comment out the others, for example for the 5":
-
-```
-# >>> lemaker-lcd
-# LeMaker LCD: uncomment ONE line below (or run: sudo lemaker-lcd 35|5|7|off)
-#user_overlays=bananapro-lemaker-lcd35
-user_overlays=bananapro-lemaker-lcd5
-#user_overlays=bananapro-lemaker-lcd7
-# <<< lemaker-lcd
-```
-
-To disable the LCD, comment out all three lines. If more than one line is uncommented, only the last one is used.
-
-Without this block (overlays installed by hand), find the `user_overlays=` line and leave only one panel overlay on it, e.g. `user_overlays=bananapro-lemaker-lcd5`. To disable the panel, remove its name from this line.
-
-### Before the first boot
-
-Armbian keeps `/boot` on the same ext4 partition as the system, so `armbianEnv.txt` cannot be edited from Windows. If your panel is not the 7", boot the image once with HDMI connected (or log in over SSH), switch the panel and reboot. On Linux you can also mount the SD card and edit `boot/armbianEnv.txt` on it directly.
-
-## Touch (requires one extra module)
-
-All three panels use the same FocalTech FT5x06 touch controller. It is handled by the `edt-ft5x06` driver, which **Armbian does not build by default**. The display works without it, touch does not. The module only needs to be built once and works with every panel.
-
-The ready-made images from [Releases](https://github.com/cyryllo/fex_configuration/releases) already include this module and the retry service described below.
-
-### Retry service (required)
-
-At boot the driver's first attempt to talk to the touch controller fails with an I2C bus error (`mv64xxx_i2c_fsm: Ctlr Error ... status: 0x0`, then `touchscreen probe failed` / `error -11`). The same attempt a moment later succeeds. The small `lemaker-touch-retry` service retries binding the driver after boot, so touch works right away:
-
-```bash
-cd fex_configuration
+# touch retry service (see below)
 sudo install -m 0755 armbian-build/lemaker-touch-retry /usr/local/sbin/
 sudo install -m 0644 armbian-build/lemaker-touch-retry.service /etc/systemd/system/
 sudo systemctl enable lemaker-touch-retry.service
 sudo reboot
 ```
 
-After the reboot `journalctl -b -u lemaker-touch-retry` should show `dotyk 2-0038 dziala` ("touch 2-0038 works"), and `grep -A1 -i edt /proc/bus/input/devices` should list `generic ft5x06`.
-
-To bind the driver by hand without rebooting: `echo 2-0038 | sudo tee /sys/bus/i2c/drivers/edt_ft5x06/bind`.
-
-### Option A: build just the module on the board (simpler)
+**Touch driver:** Armbian does not build `edt-ft5x06` (`CONFIG_TOUCHSCREEN_EDT_FT5X06`). The ready-made images include it. On a stock Armbian build it as an external module:
 
 ```bash
-# Build tools and kernel headers matching the installed kernel
-# (they can also be installed via armbian-config)
 sudo apt install build-essential linux-headers-current-sunxi
-
-# Driver source matching the kernel version (here: 6.18)
 mkdir ~/ft5x06 && cd ~/ft5x06
 wget https://raw.githubusercontent.com/torvalds/linux/v6.18/drivers/input/touchscreen/edt-ft5x06.c
 echo 'obj-m += edt-ft5x06.o' > Makefile
-
-# Build and install the module
 make -C /lib/modules/$(uname -r)/build M=$PWD modules
 sudo make -C /lib/modules/$(uname -r)/build M=$PWD modules_install
 sudo depmod -a
-sudo reboot
 ```
 
-If you have the `edge` kernel or a version other than 6.18, replace `v6.18` in the URL with your version (the first two numbers of `uname -r`, e.g. `v7.3`) and `current` with `edge` in the headers package name.
+Rebuild it after every kernel update. Replace `v6.18` with your kernel version if different.
 
-**Note:** after a kernel update the module has to be built again (same commands).
+### How it works
 
-### Option B: custom kernel with the Armbian build framework
+- **Display:** all panels use TCON0 (`&tcon0_out` endpoint 0), panel power on PH12, backlight PWM0 (PB2) with enable PH8. Only one panel overlay can be active.
+- **7" LVDS:** the A20 TCON only switches to LVDS mode when the panel is `compatible = "panel-lvds"` (`vesa-24`, 55 MHz, 1024x600).
+- **5" RGB:** generic `panel-dpi` with timings in the overlay (30 MHz, 800x480).
+- **3.5" RGB:** `lemaker,bl035-rgb-002` from the kernel's `panel-simple`, no timings in the overlay.
+- **Touch:** FocalTech FT5x06 on I2C3 (PI0/PI1, address 0x38, IRQ PH9), identified as `generic ft5x06 (79)`. The fex pin `ctp_wakeup` (PH7) is the active-low RESET line, so it is `reset-gpios = <&pio 7 7 1>` (the driver then waits 300 ms for the controller). At boot the first probe always fails with an I2C bus error (`mv64xxx ... Ctlr Error status 0x0`, error -11), a later bind works, so `lemaker-touch-retry.service` rebinds the driver after boot. Manual bind: `echo 2-0038 | sudo tee /sys/bus/i2c/drivers/edt_ft5x06/bind`.
+- **Panel switching:** U-Boot ignores lines starting with `#` in `armbianEnv.txt`; `lemaker-lcd` keeps one active `user_overlays=` line and leaves non-LeMaker overlays untouched.
 
-On a Linux computer (the build runs in a Docker container):
+### fex to Device Tree timing conversion
 
-```bash
-git clone https://github.com/armbian/build.git
-cd build
-./compile.sh kernel-config BOARD=bananapipro BRANCH=current
-```
+- `hback-porch = lcd_hbp - lcd_hspw`, `vback-porch = lcd_vbp - lcd_vspw` (fex back porches include the sync pulse)
+- `vtotal = lcd_vt / 2` (fex stores a doubled value)
+- `hfront-porch = lcd_ht - lcd_x - lcd_hbp`, `vfront-porch = lcd_vt/2 - lcd_y - lcd_vbp`
 
-In the menu, enable as a module (`M`):
-`Device Drivers > Input device support > Touchscreens > EDT FocalTech FT5x06 I2C Touchscreen support`
+Per-panel calculations are in the comments of the overlay files.
 
-Then build the kernel:
-
-```bash
-./compile.sh kernel BOARD=bananapipro BRANCH=current
-```
-
-The resulting `.deb` packages are in `output/debs/`. Install the `linux-image-...` package on the board with `sudo dpkg -i` and reboot. This option is more convenient in the long run, because the module is part of the kernel.
-
-To build a complete image with the overlays and the touch driver, use the script in [armbian-build/](armbian-build/README.md).
-
-## Checking that it works
-
-```bash
-# Did the panel and display controller start
-dmesg | grep -iE "sun4i|lvds|panel"
-
-# Is there a backlight (a directory such as lcd7-backlight should appear)
-ls /sys/class/backlight/
-
-# Set brightness manually (0-255)
-echo 120 | sudo tee /sys/class/backlight/*/brightness
-
-# Does the touch controller answer on I2C (look for "38" or "UU")
-sudo apt install i2c-tools
-i2cdetect -l
-sudo i2cdetect -y 3      # the bus number may differ, check i2cdetect -l
-
-# Is touch visible as an input device
-cat /proc/bus/input/devices | grep -A4 -i edt
-```
-
-## Troubleshooting
-
-| Symptom | What to check / change |
-|---|---|
-| Black screen, no backlight | Make sure there is only one panel overlay in `/boot/armbianEnv.txt`. Check `dmesg` for `panel` or `pwm` errors. |
-| Backlight works in reverse (0 = brightest) | In the overlay file, in the line `pwms = <&pwm 0 50000 0>;` change the last `0` to `1` and install the overlay again. |
-| 7": red or blank screen after the kernel starts | Known LVDS polarity issue in some kernels. The Armbian kernel already has the fix, other distributions may not. |
-| 5" or 3.5": colour noise, flickering edges | In the `panel-timing` block (5") add `pixelclk-active = <0>;` or `<1>;` and see which works better. |
-| 3.5": picture shifted or "floating" | See the comment next to the pin group in the overlay file (DE signal on PD25). |
-| Touch does not work, `dmesg` shows `touchscreen probe failed` / `error -11` | Install the `lemaker-touch-retry` service (section [Touch](#touch-requires-one-extra-module)), or bind the driver by hand: `echo 2-0038 \| sudo tee /sys/bus/i2c/drivers/edt_ft5x06/bind`. |
-| Touch does not work, nothing about `edt` in `dmesg` | Check that the `edt-ft5x06` module is built (`lsmod \| grep edt`) and that `sudo i2cdetect -y 2` sees address `38` (I2C3 is bus number 2, check with `i2cdetect -l`). |
-| `i2cdetect` does not show `38` at all | The touch controller is held in reset. Use an overlay from this repository dated after 2026-10-26: PH7 must be `reset-gpios = <&pio 7 7 1>`, not `wake-gpios`. |
-| Touch mirrored or with swapped axes | In the `touchscreen@38` node add `touchscreen-inverted-x;`, `touchscreen-inverted-y;` or `touchscreen-swapped-x-y;`. |
-
-After every change to a `.dts` file, install it again with `sudo armbian-add-overlay ...` and reboot.
-
-## How the fex parameters were converted
-
-The fex files stored timings differently from Device Tree:
-
-- `lcd_hbp` and `lcd_vbp` already include the sync pulse width, so: `hback-porch = lcd_hbp - lcd_hspw`, `vback-porch = lcd_vbp - lcd_vspw`.
-- `lcd_vt` is stored as a doubled value (old Allwinner convention), so the total number of lines is `lcd_vt / 2`.
-- Front porches: `hfront-porch = lcd_ht - lcd_x - lcd_hbp`, `vfront-porch = lcd_vt/2 - lcd_y - lcd_vbp`.
-
-The exact calculations for each panel are described in the comments in the overlay files.
-
-The most important technical differences from the old system:
-
-- **7" LVDS:** the A20 display controller only enables LVDS mode when the panel has `compatible = "panel-lvds"`. That is why the overlay uses exactly this description.
-- **3.5":** this panel is already described in the kernel (`lemaker,bl035-rgb-002`), so the overlay does not specify timings.
-- **5":** this panel is not in the kernel, so the timings are given in the overlay using the generic `panel-dpi` description.
-- **Touch:** the old `ft5x_ts` driver was replaced by the mainline `edt-ft5x06` driver. The fex pin `ctp_wakeup` (PH7) is in fact the controller's active-low RESET line, so the overlay describes it as `reset-gpios`. With `wake-gpios` the driver waits only 5 ms after power-up and the controller does not answer yet, with `reset-gpios` it waits 300 ms. The controller identifies itself as `generic ft5x06 (79)` (register 0xA8 = 0x79, firmware 0x06).
-
-## Old files (kernel 3.4)
-
-The `stare jądro sunxi 3.4/` directory ("old sunxi 3.4 kernel", with `bin/` and `fex/` subdirectories) contains the original LeMaker files. They only work with old system images running the sunxi 3.4 kernel: the chosen `.bin` file was renamed to `script.bin` and copied to the first partition of the card. On Armbian with a current kernel they have no effect and are kept as the source of the parameters.
-
-`stare jądro sunxi 3.4/fex/` also contains files for the 10.1" panel and for the Banana Pi (non-"Pro"). There is no overlay for the 10.1" panel yet, but it can be prepared the same way. On the Banana Pi the Banana Pro overlays and image already work (see [Ready-made system images](#ready-made-system-images)).
-
-## Sources
+### Sources
 
 - Original LeMaker repository: <https://github.com/LeMaker/fex_configuration>
-- Armbian overlay documentation: <https://docs.armbian.com/User-Guide_Armbian_overlays/>
-- Thread about the 7" panel on Banana Pi Pro with mainline (Armbian forum): <https://forum.armbian.com/topic/7233-bananapi-pro-7-touchlcd-with-debian-buster-and-mainline-kernel-5xxxx/>
+- Armbian overlays: <https://docs.armbian.com/User-Guide_Armbian_overlays/>
+- Armbian build framework: <https://docs.armbian.com/build-framework/getting-started/>

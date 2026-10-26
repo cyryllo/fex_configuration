@@ -4,7 +4,7 @@ Fork of [LeMaker/fex_configuration](https://github.com/LeMaker/fex_configuration
 
 This repository contains **Device Tree overlays** that bring the fex settings to current systems. The parameters (display timings, pins, power, backlight, touch) were taken 1:1 from the original LeMaker fex files.
 
-> **Status:** the 7" panel is confirmed working on real hardware (display, kernel 6.18.58). Touch on the 7" and the 5" panel are being tested. The 3.5" overlay is untested (no hardware). Reports of success (or problems) are welcome.
+> **Status:** the 5" and 7" panels are confirmed working on real hardware (display, kernel 6.18.58). Touch is being tested. The 3.5" overlay is untested (no hardware). It shares the RGB interface, pins, power, backlight and touch with the confirmed 5" overlay, so it will most likely work, but it has not been verified. Reports of success (or problems) are welcome.
 
 ## Supported panels
 
@@ -30,7 +30,11 @@ sudo apt install device-tree-compiler
 
 ## Ready-made system images
 
-Instead of installing an overlay by hand, you can flash a ready-made Armbian image (Debian 13 trixie) with the overlays and the touch driver already included. Images are available under [Releases](https://github.com/cyryllo/fex_configuration/releases). Newer images are a single image for all panels: the 7" panel is enabled by default, others are selected with `sudo lemaker-lcd 5` (or `35`, `7`, `off`) and a reboot. To build such an image yourself, see [armbian-build/README.md](armbian-build/README.md).
+Instead of installing an overlay by hand, you can flash a ready-made Armbian image (Debian 13 trixie, XFCE desktop) with the overlays and the touch driver already included. Images are available under [Releases](https://github.com/cyryllo/fex_configuration/releases).
+
+The image also works on the original **Banana Pi** (non-"Pro", Allwinner A20, same LCD connector): it boots and the LeMaker panels work (tested by the author). Note that the image is built for the Banana Pro and uses its device tree (`sun7i-a20-bananapro.dtb`), so a few board-specific details that differ between the two boards (e.g. Wi-Fi, which only the Pro has) may not match.
+
+One image supports all panels. The 7" panel is enabled by default, for another panel see [Changing or disabling the panel](#changing-or-disabling-the-panel). To build such an image yourself, see [armbian-build/README.md](armbian-build/README.md).
 
 ## Installing a panel
 
@@ -59,21 +63,57 @@ The picture should appear on the panel once the kernel starts. The bootloader (U
 
 ## Changing or disabling the panel
 
-Open `/boot/armbianEnv.txt`:
+Only one panel overlay can be active at a time. Every change takes effect after `sudo reboot`.
+
+### Option 1: the `lemaker-lcd` script (recommended)
+
+The ready-made images include the `lemaker-lcd` script:
+
+```bash
+sudo lemaker-lcd          # shows which panel is enabled
+sudo lemaker-lcd 5        # enables the 5" panel
+sudo lemaker-lcd 7        # enables the 7" panel
+sudo lemaker-lcd 35       # enables the 3.5" panel
+sudo lemaker-lcd off      # disables the LCD, HDMI only
+sudo reboot
+```
+
+The script only changes the LeMaker panel, other overlays on the `user_overlays=` line stay as they are. A backup of the previous file is saved as `/boot/armbianEnv.txt.bak`.
+
+If you installed the overlays by hand (section [Installing a panel](#installing-a-panel)), you can use the script too. Install all three overlays once, then copy the script:
+
+```bash
+cd fex_configuration
+for f in overlays/bananapro-lemaker-lcd*.dts; do sudo armbian-add-overlay "$f"; done
+sudo install -m 0755 armbian-build/lemaker-lcd /usr/local/sbin/lemaker-lcd
+sudo lemaker-lcd 7        # enables one panel and turns the others off
+sudo reboot
+```
+
+### Option 2: editing `/boot/armbianEnv.txt` by hand
 
 ```bash
 sudo nano /boot/armbianEnv.txt
 ```
 
-Find the `user_overlays=` line and leave only one panel overlay on it, for example:
+In the ready-made images the end of the file contains a block with one line per panel. Uncomment exactly one line (remove the `#`) and comment out the others, for example for the 5":
 
 ```
+# >>> lemaker-lcd
+# LeMaker LCD: uncomment ONE line below (or run: sudo lemaker-lcd 35|5|7|off)
+#user_overlays=bananapro-lemaker-lcd35
 user_overlays=bananapro-lemaker-lcd5
+#user_overlays=bananapro-lemaker-lcd7
+# <<< lemaker-lcd
 ```
 
-To disable the panel completely, remove its name from this line. Run `sudo reboot` after the change.
+To disable the LCD, comment out all three lines. If more than one line is uncommented, only the last one is used.
 
-If you switch to a different panel, first remove the old name from `user_overlays=`, and only then add the new one with `armbian-add-overlay`.
+Without this block (overlays installed by hand), find the `user_overlays=` line and leave only one panel overlay on it, e.g. `user_overlays=bananapro-lemaker-lcd5`. To disable the panel, remove its name from this line.
+
+### Before the first boot
+
+Armbian keeps `/boot` on the same ext4 partition as the system, so `armbianEnv.txt` cannot be edited from Windows. If your panel is not the 7", boot the image once with HDMI connected (or log in over SSH), switch the panel and reboot. On Linux you can also mount the SD card and edit `boot/armbianEnv.txt` on it directly.
 
 ## Touch (requires one extra module)
 
@@ -183,7 +223,7 @@ The most important technical differences from the old system:
 
 The `stare jądro sunxi 3.4/` directory ("old sunxi 3.4 kernel", with `bin/` and `fex/` subdirectories) contains the original LeMaker files. They only work with old system images running the sunxi 3.4 kernel: the chosen `.bin` file was renamed to `script.bin` and copied to the first partition of the card. On Armbian with a current kernel they have no effect and are kept as the source of the parameters.
 
-`stare jądro sunxi 3.4/fex/` also contains files for the 10.1" panel and for the Banana Pi (non-"Pro"). There are no overlays for them yet, but they can be prepared the same way.
+`stare jądro sunxi 3.4/fex/` also contains files for the 10.1" panel and for the Banana Pi (non-"Pro"). There is no overlay for the 10.1" panel yet, but it can be prepared the same way. On the Banana Pi the Banana Pro overlays and image already work (see [Ready-made system images](#ready-made-system-images)).
 
 ## Sources
 

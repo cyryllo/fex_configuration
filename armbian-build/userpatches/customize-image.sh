@@ -35,11 +35,20 @@ for dts in "${DTS_DIR}"/*.dts; do
 	echo "lemaker-lcd: ${name}.dtbo"
 done
 
-# CO: wlacza wybrany ekran (plik "ekran" zapisuje zbuduj-obraz.sh).
-# DLACZEGO usuwamy stara linie: naraz moze dzialac tylko jedna nakladka ekranu.
+# CO: narzedzia do sprawdzenia dotyku i I2C (evtest, i2cdetect).
+# DLACZEGO w obrazie: README kaze ich uzyc przy diagnozie, a na swiezym
+# systemie bez nich trzeba by najpierw konfigurowac siec.
+apt-get update -qq
+apt-get install -y --no-install-recommends evtest i2c-tools
+
+# CO: skrypt do przelaczania ekranu na plycie (sudo lemaker-lcd 7|5|35|off).
+install -m 0755 "${SRC}/lemaker-lcd" /usr/local/sbin/lemaker-lcd
+
+# CO: wlacza domyslny ekran (plik "ekran" zapisuje zbuduj-obraz.sh).
+# DLACZEGO przez lemaker-lcd: skrypt dopisuje do armbianEnv.txt blok
+# z zakomentowanymi liniami dla wszystkich ekranow, wiec uzytkownik
+# moze tez zmienic ekran recznie, odkomentowujac jedna linie.
 ekran=$(cat "${SRC}/ekran" 2> /dev/null || true)
-if [[ -n "${ekran}" && "${ekran}" != "brak" ]]; then
-	sed -i '/^user_overlays=/d' "${ENV_FILE}"
-	echo "user_overlays=bananapro-lemaker-lcd${ekran}" >> "${ENV_FILE}"
-	echo "lemaker-lcd: wlaczony ekran ${ekran}"
-fi
+[[ "${ekran}" == "brak" || -z "${ekran}" ]] && ekran=off
+/usr/local/sbin/lemaker-lcd "${ekran}"
+rm -f "${ENV_FILE}.bak"

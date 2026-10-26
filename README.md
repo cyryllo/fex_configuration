@@ -4,7 +4,7 @@ Fork of [LeMaker/fex_configuration](https://github.com/LeMaker/fex_configuration
 
 This repository contains **Device Tree overlays** that bring the fex settings to current systems. The parameters (display timings, pins, power, backlight, touch) were taken 1:1 from the original LeMaker fex files.
 
-> **Status:** the overlays compile and apply correctly to `sun7i-a20-bananapro.dtb` from the current mainline kernel, but they have not yet been confirmed on every panel. Reports of success (or problems) are welcome.
+> **Status:** the 7" panel is confirmed working on real hardware (display, kernel 6.18.58). Touch on the 7" and the 5" panel are being tested. The 3.5" overlay is untested (no hardware). Reports of success (or problems) are welcome.
 
 ## Supported panels
 
@@ -30,7 +30,7 @@ sudo apt install device-tree-compiler
 
 ## Ready-made system images
 
-Instead of installing an overlay by hand, you can flash a ready-made Armbian image (Debian 13 trixie, minimal) with the panel and the touch driver already enabled. Images for each panel are available under [Releases](https://github.com/cyryllo/fex_configuration/releases). To build such an image yourself, see [armbian-build/README.md](armbian-build/README.md).
+Instead of installing an overlay by hand, you can flash a ready-made Armbian image (Debian 13 trixie) with the overlays and the touch driver already included. Images are available under [Releases](https://github.com/cyryllo/fex_configuration/releases). Newer images are a single image for all panels: the 7" panel is enabled by default, others are selected with `sudo lemaker-lcd 5` (or `35`, `7`, `off`) and a reboot. To build such an image yourself, see [armbian-build/README.md](armbian-build/README.md).
 
 ## Installing a panel
 

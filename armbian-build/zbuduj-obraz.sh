@@ -1,18 +1,21 @@
 #!/bin/bash
-# Buduje obraz Armbian (Debian 13 trixie, minimal) dla Banana Pro
-# z nakladkami ekranow LeMaker i sterownikiem dotyku edt-ft5x06.
+# Buduje jeden obraz Armbian (Debian 13 trixie) dla Banana Pro
+# z nakladkami wszystkich ekranow LeMaker, sterownikiem dotyku edt-ft5x06
+# i skryptem lemaker-lcd do przelaczania ekranu na plycie.
 #
 # Przyklady:
-#   ./zbuduj-obraz.sh --ekran 7
-#   ./zbuduj-obraz.sh --ekran 5 --jadro edge
-#   ./zbuduj-obraz.sh --ekran 5 -- KERNEL_CONFIGURE=yes   # reszta trafia do compile.sh
+#   ./zbuduj-obraz.sh                      # pulpit XFCE, wlaczony ekran 7"
+#   ./zbuduj-obraz.sh --ekran 5            # pulpit XFCE, wlaczony ekran 5"
+#   ./zbuduj-obraz.sh --pulpit brak        # bez pulpitu (minimal)
+#   ./zbuduj-obraz.sh -- KERNEL_CONFIGURE=yes   # reszta trafia do compile.sh
 
 set -euo pipefail
 
 SKRYPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_DIR=$(dirname "${SKRYPT_DIR}")
 
-EKRAN=""
+EKRAN="7"
+PULPIT="xfce"
 JADRO="current"
 BUILD_DIR="${HOME}/armbian-build"
 AKTUALIZUJ="no"
@@ -20,10 +23,12 @@ EXTRA=()
 
 pomoc() {
 	cat <<- EOF
-		Uzycie: $0 --ekran 5|7|35|brak [opcje] [-- dodatkowe opcje compile.sh]
+		Uzycie: $0 [opcje] [-- dodatkowe opcje compile.sh]
 
-		  -e, --ekran N       ekran wlaczony od pierwszego startu: 5, 7, 35 albo brak
-		                      (nakladki wszystkich ekranow i tak trafiaja do obrazu)
+		  -e, --ekran N       ekran wlaczony od pierwszego startu: 7 (domyslnie), 5, 35 albo brak
+		                      (nakladki wszystkich ekranow i tak trafiaja do obrazu,
+		                      na plycie zmienia sie je przez: sudo lemaker-lcd 7|5|35|off)
+		  -p, --pulpit NAZWA  xfce (domyslnie) albo brak (obraz minimal bez pulpitu)
 		  -j, --jadro NAZWA   current (domyslnie, 6.18) albo edge
 		  -k, --katalog DIR   gdzie trzymac armbian/build (domyslnie ${BUILD_DIR})
 		  -u, --aktualizuj    przed budowaniem pobierz najnowszy armbian/build (git pull)
@@ -39,6 +44,7 @@ blad() {
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 		-e | --ekran) EKRAN="${2:-}"; shift 2 ;;
+		-p | --pulpit) PULPIT="${2:-}"; shift 2 ;;
 		-j | --jadro) JADRO="${2:-}"; shift 2 ;;
 		-k | --katalog) BUILD_DIR="${2:-}"; shift 2 ;;
 		-u | --aktualizuj) AKTUALIZUJ="yes"; shift ;;
@@ -50,12 +56,21 @@ done
 
 case "${EKRAN}" in
 	5 | 7 | 35 | brak) ;;
-	"") pomoc; blad "podaj ekran (--ekran 5, 7, 35 albo brak)" ;;
-	*) blad "nieznany ekran: ${EKRAN}" ;;
+	*) blad "nieznany ekran: ${EKRAN} (7, 5, 35 albo brak)" ;;
 esac
 case "${JADRO}" in
 	current | edge) ;;
 	*) blad "jadro musi byc current albo edge" ;;
+esac
+
+# CO: ustawienia pulpitu dla compile.sh.
+# DLACZEGO XFCE w wariancie minimal: jest oficjalnie wspierany dla trixie/armhf
+# i jest lekki, a A20 ma tylko 1 GB RAM. "minimal" = sam pulpit i ekran
+# logowania (ok. 500 MB), wiecej programow mozna doinstalowac przez armbian-config.
+case "${PULPIT}" in
+	xfce) PULPIT_OPCJE=(BUILD_DESKTOP=yes BUILD_MINIMAL=no DESKTOP_ENVIRONMENT=xfce DESKTOP_TIER=minimal) ;;
+	brak) PULPIT_OPCJE=(BUILD_DESKTOP=no BUILD_MINIMAL=yes) ;;
+	*) blad "pulpit musi byc xfce albo brak" ;;
 esac
 
 # CO: sprawdzenie narzedzi na komputerze.
@@ -74,20 +89,10 @@ fi
 # DLACZEGO: dokumentacja Armbian wymaga sciezki bez spacji.
 [[ "${BUILD_DIR}" != *" "* ]] || blad "sciezka katalogu budowania nie moze zawierac spacji: ${BUILD_DIR}"
 
-# CO: szukamy plikow .dts nakladek w repozytorium.
-# DLACZEGO kilka miejsc: pliki sa przenoszone do overlays/, a starsze wersje
-# repozytorium mialy je w DTS/ albo w glownym katalogu.
-DTS_SRC=""
-for d in "${REPO_DIR}/overlays" "${REPO_DIR}/DTS" "${REPO_DIR}"; do
-	if compgen -G "${d}/bananapro-lemaker-lcd*.dts" > /dev/null; then
-		DTS_SRC="${d}"
-		break
-	fi
-done
-[[ -n "${DTS_SRC}" ]] || blad "nie znaleziono plikow bananapro-lemaker-lcd*.dts w ${REPO_DIR}"
-echo ">> Nakladki z: ${DTS_SRC}"
+DTS_SRC="${REPO_DIR}/overlays"
+compgen -G "${DTS_SRC}/bananapro-lemaker-lcd*.dts" > /dev/null || blad "nie znaleziono plikow bananapro-lemaker-lcd*.dts w ${DTS_SRC}"
 
-# CO: szybka kontrola skladni nakladek przed godzina budowania.
+# CO: szybka kontrola skladni nakladek przed dlugim budowaniem.
 # DLACZEGO opcjonalna: dtc na komputerze nie jest wymagany, w obrazie i tak jest.
 if command -v dtc > /dev/null; then
 	for f in "${DTS_SRC}"/bananapro-lemaker-lcd*.dts; do
@@ -120,23 +125,16 @@ cp "${SKRYPT_DIR}/userpatches/customize-image.sh" "${UP}/"
 chmod +x "${UP}/customize-image.sh"
 rm -f "${UP}/overlay/lemaker-lcd/"*.dts
 cp "${DTS_SRC}"/bananapro-lemaker-lcd*.dts "${UP}/overlay/lemaker-lcd/"
+cp "${SKRYPT_DIR}/lemaker-lcd" "${UP}/overlay/lemaker-lcd/"
 echo "${EKRAN}" > "${UP}/overlay/lemaker-lcd/ekran"
 
 # CO: wlasciwe budowanie, odpowiednik:
-#   ./compile.sh BOARD=bananapipro RELEASE=trixie BUILD_DESKTOP=no BUILD_MINIMAL=yes KERNEL_CONFIGURE=no
+#   ./compile.sh BOARD=bananapipro RELEASE=trixie BUILD_DESKTOP=... KERNEL_CONFIGURE=no
 # plus BRANCH i nasze dodatki z config-bananapro-lcd.conf.
-# DLACZEGO LCD_SUFFIX: bez niego obrazy dla roznych ekranow maja
-# te sama nazwe i kolejny build nadpisuje poprzedni
-# (dopisuje go hook user_config w config-bananapro-lcd.conf).
-if [[ "${EKRAN}" == "brak" ]]; then
-	SUFFIX="_lcd-brak"
-else
-	SUFFIX="_lcd${EKRAN}"
-fi
-echo ">> Buduje: ekran=${EKRAN}, jadro=${JADRO}, Debian 13 trixie"
+echo ">> Buduje: pulpit=${PULPIT}, domyslny ekran=${EKRAN}, jadro=${JADRO}, Debian 13 trixie"
 cd "${BUILD_DIR}"
-./compile.sh bananapro-lcd BRANCH="${JADRO}" LCD_SUFFIX="${SUFFIX}" "${EXTRA[@]}"
+./compile.sh bananapro-lcd BRANCH="${JADRO}" "${PULPIT_OPCJE[@]}" "${EXTRA[@]}"
 
 echo
 echo ">> Gotowe. Obrazy:"
-ls -1t "${BUILD_DIR}"/output/images/*Bananapipro*trixie*.img* 2> /dev/null | head -5 || true
+ls -1t "${BUILD_DIR}"/output/images/*Bananapipro*trixie*.img 2> /dev/null | head -5 || true

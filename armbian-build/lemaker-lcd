@@ -1,0 +1,99 @@
+#!/bin/bash
+# lemaker-lcd: wybor ekranu LeMaker na Banana Pro (Armbian)
+#
+# Uzycie:
+#   sudo lemaker-lcd          pokazuje, ktory ekran jest wlaczony
+#   sudo lemaker-lcd 7        wlacza ekran 7" (albo 5, 35)
+#   sudo lemaker-lcd off      wylacza ekran LCD (zostaje HDMI)
+#
+# Zmiana dziala po ponownym uruchomieniu (sudo reboot).
+
+set -euo pipefail
+
+ENV_FILE=/boot/armbianEnv.txt
+DTBO_DIR=/boot/overlay-user
+PREFIX=bananapro-lemaker-lcd
+EKRANY=(35 5 7)
+POCZATEK="# >>> lemaker-lcd"
+KONIEC="# <<< lemaker-lcd"
+
+blad() {
+	echo "BLAD: $*" >&2
+	exit 1
+}
+
+# CO: zwraca nakladki z aktywnych (niezakomentowanych) linii user_overlays=.
+# DLACZEGO wszystkie linie: U-Boot bierze ostatnia, ale ktos mogl dopisac
+# kilka recznie, wiec zbieramy wszystko, zeby nic nie zgubic.
+aktywne_nakladki() {
+	grep -E '^[[:space:]]*user_overlays=' "${ENV_FILE}" | sed 's/^[[:space:]]*user_overlays=//' | tr ' ' '\n' | grep -v '^$' || true
+}
+
+pokaz_stan() {
+	local wlaczony
+	wlaczony=$(aktywne_nakladki | grep "^${PREFIX}" | tail -1 || true)
+	if [[ -z "${wlaczony}" ]]; then
+		echo "Ekran LCD: wylaczony (tylko HDMI)"
+	else
+		echo "Ekran LCD: ${wlaczony#"${PREFIX}"}\" (${wlaczony})"
+	fi
+	echo "Dostepne: ${EKRANY[*]} off"
+}
+
+[[ -f "${ENV_FILE}" ]] || blad "brak ${ENV_FILE}"
+
+if [[ $# -eq 0 ]]; then
+	pokaz_stan
+	exit 0
+fi
+
+wybor="$1"
+case "${wybor}" in
+	35 | 5 | 7)
+		[[ -f "${DTBO_DIR}/${PREFIX}${wybor}.dtbo" ]] || blad "brak ${DTBO_DIR}/${PREFIX}${wybor}.dtbo"
+		;;
+	off) ;;
+	-h | --help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+	*) blad "nieznany ekran: ${wybor} (dostepne: ${EKRANY[*]} off)" ;;
+esac
+
+[[ $EUID -eq 0 ]] || blad "uruchom przez sudo"
+
+# CO: nakladki spoza LeMaker (np. dodane przez armbian-add-overlay) zostaja.
+# DLACZEGO: skrypt ma zmieniac tylko ekran, nie cudze ustawienia.
+inne=$(aktywne_nakladki | grep -v "^${PREFIX}" | tr '\n' ' ' | sed 's/ *$//')
+
+nowe="${inne}"
+if [[ "${wybor}" != "off" ]]; then
+	nowe="${inne:+${inne} }${PREFIX}${wybor}"
+fi
+
+# CO: usuwa stary blok lemaker-lcd i wszystkie aktywne linie user_overlays=,
+# potem dopisuje blok od nowa na koncu pliku.
+# DLACZEGO od nowa: wtedy zawsze jest dokladnie jedna aktywna linia
+# i komplet zakomentowanych podpowiedzi dla recznej edycji.
+cp "${ENV_FILE}" "${ENV_FILE}.bak"
+tmp=$(mktemp)
+sed -e "/^${POCZATEK}\$/,/^${KONIEC}\$/d" -e '/^[[:space:]]*user_overlays=/d' "${ENV_FILE}" > "${tmp}"
+{
+	echo "${POCZATEK}"
+	echo "# LeMaker LCD: uncomment ONE line below (or run: sudo lemaker-lcd 35|5|7|off)"
+	for e in "${EKRANY[@]}"; do
+		if [[ "${e}" == "${wybor}" ]]; then
+			echo "user_overlays=${nowe}"
+		elif [[ -n "${inne}" ]]; then
+			echo "#user_overlays=${inne} ${PREFIX}${e}"
+		else
+			echo "#user_overlays=${PREFIX}${e}"
+		fi
+	done
+	if [[ "${wybor}" == "off" && -n "${inne}" ]]; then
+		echo "user_overlays=${inne}"
+	fi
+	echo "${KONIEC}"
+} >> "${tmp}"
+cat "${tmp}" > "${ENV_FILE}"
+rm -f "${tmp}"
+
+pokaz_stan
+echo "Uruchom ponownie, zeby zmiana zadzialala: sudo reboot"

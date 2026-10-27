@@ -51,7 +51,7 @@ Reports are welcome in the [Armbian forum thread](https://forum.armbian.com/topi
 
 ```bash
 dmesg | grep -iE "sun4i|lvds|panel|edt|pwm|i2c-2"
-journalctl -b -u lemaker-touch-retry
+grep -A1 -i edt /proc/bus/input/devices
 ```
 
 ---
@@ -79,10 +79,6 @@ for f in overlays/bananapro-lemaker-lcd*.dts; do sudo armbian-add-overlay "$f"; 
 sudo install -m 0755 armbian-build/lemaker-lcd /usr/local/sbin/
 sudo lemaker-lcd 7        # your panel
 
-# touch retry service (see below)
-sudo install -m 0755 armbian-build/lemaker-touch-retry /usr/local/sbin/
-sudo install -m 0644 armbian-build/lemaker-touch-retry.service /etc/systemd/system/
-sudo systemctl enable lemaker-touch-retry.service
 sudo reboot
 ```
 
@@ -100,13 +96,27 @@ sudo depmod -a
 
 Rebuild it after every kernel update. Replace `v6.18` with your kernel version if different.
 
+This unpatched driver fails at boot (see [How it works](#how-it-works)). Either apply the patch from this repository to `edt-ft5x06.c` before `make`:
+
+```bash
+patch -p4 < ~/fex_configuration/armbian-build/userpatches/kernel/archive/sunxi-6.18/edt-ft5x06-retry-identify-after-bus-recovery.patch
+```
+
+or install the retry service, which binds the driver again after boot:
+
+```bash
+sudo install -m 0755 armbian-build/lemaker-touch-retry /usr/local/sbin/
+sudo install -m 0644 armbian-build/lemaker-touch-retry.service /etc/systemd/system/
+sudo systemctl enable lemaker-touch-retry.service
+```
+
 ### How it works
 
 - **Display:** all panels use TCON0 (`&tcon0_out` endpoint 0), panel power on PH12, backlight PWM0 (PB2) with enable PH8. Only one panel overlay can be active.
 - **7" LVDS:** the A20 TCON only switches to LVDS mode when the panel is `compatible = "panel-lvds"` (`vesa-24`, 55 MHz, 1024x600).
 - **5" RGB:** generic `panel-dpi` with timings in the overlay (30 MHz, 800x480).
 - **3.5" RGB:** `lemaker,bl035-rgb-002` from the kernel's `panel-simple`, no timings in the overlay.
-- **Touch:** FocalTech FT5x06 on I2C3 (PI0/PI1, address 0x38, IRQ PH9), identified as `generic ft5x06 (79)`. The fex pin `ctp_wakeup` (PH7) is the active-low RESET line, so it is `reset-gpios = <&pio 7 7 1>` (the driver then waits 300 ms for the controller). At boot the first probe always fails with an I2C bus error (`mv64xxx ... Ctlr Error status 0x0`, error -11), a later bind works, so `lemaker-touch-retry.service` rebinds the driver after boot. Manual bind: `echo 2-0038 | sudo tee /sys/bus/i2c/drivers/edt_ft5x06/bind`.
+- **Touch:** FocalTech FT5x06 on I2C3 (PI0/PI1, address 0x38, IRQ PH9), identified as `generic ft5x06 (79)`. The fex pin `ctp_wakeup` (PH7) is the active-low RESET line, so it is `reset-gpios = <&pio 7 7 1>` (the driver then waits 300 ms for the controller). At boot the first I2C transfer to the controller always fails with a bus error (`mv64xxx ... Ctlr Error status 0x0`), the adapter recovers the bus and returns -EAGAIN. Neither powering the controller from PH12 (`vcc-supply`) nor holding PH7 high from early boot (`gpio-hog`) helps. The images carry a small kernel patch that makes `edt-ft5x06` retry the identification once (`identification failed, retrying` in `dmesg`). Without it, bind the driver again by hand: `echo 2-0038 | sudo tee /sys/bus/i2c/drivers/edt_ft5x06/bind`.
 - **Panel switching:** U-Boot ignores lines starting with `#` in `armbianEnv.txt`; `lemaker-lcd` keeps one active `user_overlays=` line and leaves non-LeMaker overlays untouched.
 
 ### fex to Device Tree timing conversion

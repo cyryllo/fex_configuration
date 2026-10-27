@@ -1,0 +1,34 @@
+From: Cyryl Sochacki <cyrylsochacki@gmail.com>
+Subject: [PATCH] Input: edt-ft5x06 - retry identification after I2C bus recovery
+
+On the LeMaker Banana Pro (Allwinner A20) with the LeMaker LCD panels the
+first I2C transfer to the FT5x06 after boot always fails:
+
+  mv64xxx_i2c_fsm: Ctlr Error -- state: 0x2, status: 0x0, addr: 0x38
+  edt_ft5x06 2-0038: touchscreen probe failed
+  edt_ft5x06 2-0038: probe with driver edt_ft5x06 failed with error -11
+
+The adapter recovers the bus and returns -EAGAIN. Binding the driver again
+later works, so retry the identification once on -EAGAIN.
+
+--- a/drivers/input/touchscreen/edt-ft5x06.c	2026-10-27 20:37:31.075637929 +0100
++++ b/drivers/input/touchscreen/edt-ft5x06.c	2026-10-27 20:37:31.087637645 +0100
+@@ -1273,6 +1273,18 @@
+ 	i2c_set_clientdata(client, tsdata);
+ 
+ 	error = edt_ft5x06_ts_identify(client, tsdata);
++	/*
++	 * On some boards (e.g. LeMaker Banana Pro with the LeMaker LCD panels)
++	 * the very first transfer after boot fails with a bus error, as the
++	 * bus is not idle yet. The I2C adapter then recovers the bus and
++	 * returns -EAGAIN, so retry the identification once instead of
++	 * failing the probe.
++	 */
++	if (error == -EAGAIN) {
++		dev_info(&client->dev, "identification failed, retrying\n");
++		usleep_range(10000, 11000);
++		error = edt_ft5x06_ts_identify(client, tsdata);
++	}
+ 	if (error) {
+ 		dev_err(&client->dev, "touchscreen probe failed\n");
+ 		return error;

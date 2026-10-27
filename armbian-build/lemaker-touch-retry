@@ -7,6 +7,11 @@
 # trafia na blad magistrali I2C ("Ctlr Error ... status: 0x0", "probe failed",
 # blad -11), a ta sama proba chwile pozniej przechodzi (sprawdzone na 7").
 # Uruchamiane przez lemaker-touch-retry.service.
+#
+# Potrzebne tylko na jadrze BEZ latki
+# userpatches/kernel/archive/sunxi-6.18/edt-ft5x06-retry-identify-after-bus-recovery.patch
+# (np. modul edt-ft5x06 zbudowany recznie ze zrodel mainline). Obrazy z tego
+# repozytorium maja latke w jadrze i tej uslugi nie instaluja.
 
 DRIVER=/sys/bus/i2c/drivers/edt_ft5x06
 PROBY=5

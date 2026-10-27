@@ -44,13 +44,6 @@ apt-get install -y --no-install-recommends evtest i2c-tools
 # CO: skrypt do przelaczania ekranu na plycie (sudo lemaker-lcd 7|5|35|off).
 install -m 0755 "${SRC}/lemaker-lcd" /usr/local/sbin/lemaker-lcd
 
-# CO: usluga, ktora po starcie ponawia podpiecie sterownika dotyku.
-# DLACZEGO: pierwsza proba sterownika przy starcie trafia na blad I2C,
-# kolejna przechodzi (opis w samym skrypcie).
-install -m 0755 "${SRC}/lemaker-touch-retry" /usr/local/sbin/lemaker-touch-retry
-install -m 0644 "${SRC}/lemaker-touch-retry.service" /etc/systemd/system/lemaker-touch-retry.service
-systemctl enable lemaker-touch-retry.service
-
 # CO: wlacza domyslny ekran (plik "ekran" zapisuje zbuduj-obraz.sh).
 # DLACZEGO przez lemaker-lcd: skrypt dopisuje do armbianEnv.txt blok
 # z zakomentowanymi liniami dla wszystkich ekranow, wiec uzytkownik

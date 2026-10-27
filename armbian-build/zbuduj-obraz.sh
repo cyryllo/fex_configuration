@@ -121,11 +121,16 @@ if [[ -f "${UP}/customize-image.sh" ]] && ! grep -q "lemaker-lcd" "${UP}/customi
 	echo ">> Istniejacy customize-image.sh przeniesiony do ${kopia}"
 fi
 cp "${SKRYPT_DIR}/userpatches/config-bananapro-lcd.conf" "${UP}/"
+# CO: wlasne latki jadra (ponowienie rozpoznania dotyku w edt-ft5x06).
+# DLACZEGO: pierwsza transakcja I2C do ukladu dotyku po starcie zawsze
+# konczy sie bledem magistrali, latka ponawia ja raz (zamiast uslugi
+# lemaker-touch-retry). Armbian szuka latek w userpatches/kernel/archive/sunxi-<wersja>/.
+cp -r "${SKRYPT_DIR}/userpatches/kernel" "${UP}/"
 cp "${SKRYPT_DIR}/userpatches/customize-image.sh" "${UP}/"
 chmod +x "${UP}/customize-image.sh"
 rm -f "${UP}/overlay/lemaker-lcd/"*.dts
 cp "${DTS_SRC}"/bananapro-lemaker-lcd*.dts "${UP}/overlay/lemaker-lcd/"
-cp "${SKRYPT_DIR}/lemaker-lcd" "${SKRYPT_DIR}/lemaker-touch-retry" "${SKRYPT_DIR}/lemaker-touch-retry.service" "${UP}/overlay/lemaker-lcd/"
+cp "${SKRYPT_DIR}/lemaker-lcd" "${UP}/overlay/lemaker-lcd/"
 echo "${EKRAN}" > "${UP}/overlay/lemaker-lcd/ekran"
 
 # CO: wlasciwe budowanie, odpowiednik:
